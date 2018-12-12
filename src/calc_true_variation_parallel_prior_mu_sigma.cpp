@@ -15,7 +15,7 @@ using namespace std;
 
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads);
+void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output);
 static void show_usage(string name);
 
 int main (int argc, char** argv){
@@ -23,7 +23,12 @@ int main (int argc, char** argv){
 	string in_file;
 	string out_folder;
 	int N_threads;
-	parse_argv(argc, argv, in_file, out_folder, N_threads);
+	string extended_output("false");
+	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output);
+
+	bool print_extended_output(false);
+	if ( extended_output == "true" || extended_output == "1" )
+		print_extended_output = true;
 
     int g, i, k;
     int G_tmp, C;
@@ -164,6 +169,8 @@ int main (int argc, char** argv){
 	double **lik = new double *[G];
 	for(g=0;g<G;g++){
 		lik[g] = new double [numbin];
+		for(k=0;k<numbin;k++)
+			lik[g][k] = -1.0; 
 	}
 
 	// alpha and beta of gamma prior on mu
@@ -181,80 +188,9 @@ int main (int argc, char** argv){
 	}
 	
 
-	// Write output files
-	cout << "Print results\n";
-	string my_file;
-	FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_delta, *out_ddelta;
-    // output files
-	my_file = out_folder + "/geneID.txt";
-    out_gene = (FILE *) fopen(my_file.c_str(),"w");
-	if(out_gene == NULL){
-		fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
-	}
+	// Write output files	
 
-	my_file = out_folder + "/cellID.txt";
-    out_cell = (FILE *) fopen(my_file.c_str(),"w");
-	if(out_cell == NULL){
-		fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
-	}
-
-	my_file = out_folder + "/mu.txt";
-    out_mu = (FILE *) fopen(my_file.c_str(),"w");
-	if(out_mu == NULL){
-		fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
-	}
-
-	my_file = out_folder + "/d_mu.txt";
-    out_dmu = (FILE *) fopen(my_file.c_str(),"w");
-	if(out_dmu == NULL){
-		fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
-	}
-
-	my_file = out_folder + "/delta.txt";
-    out_delta = (FILE *) fopen(my_file.c_str(),"w");
-	if(out_delta == NULL){
-		fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
-	}
-
-	my_file = out_folder + "/ddelta.txt";
-    out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
-	if(out_ddelta == NULL){
-		fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
-	}
-
-	// output cell name
-    for(i=1;i<C;i++){
-        fprintf(out_cell,"%s\n",cell_names[i].c_str());
-    }
-    fprintf(out_cell,"%s",cell_names[C].c_str());
-	for(g=0; g<G; ++g){
-		// Write gene names
-		fprintf(out_gene,"%s\n",gene_names[g].c_str());
-
-		//print best fit to file : mu, delta
-		// Print diagonal of invM : variance of mu, delta
-		fprintf(out_mu,"%lf\n",mu[g]);
-		fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
-		for(i=0;i<C-1;++i){
-			fprintf(out_delta,"%lf\t",delta[g][i]);
-			fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][i]));
-		}
-		fprintf(out_delta,"%lf\n",delta[g][C-1]);
-		fprintf(out_ddelta,"%lf\n",sqrt(var_delta[g][C-1]));
-	}
-    fclose(out_gene);
-    fclose(out_cell);
-    fclose(out_mu);
-    fclose(out_dmu);
-    fclose(out_delta);
-    fclose(out_ddelta);
-
+	cout << "Print output\n";
 	// Write log expression table and error bars table
 	ofstream out_exp_lev, out_d_exp_lev;
 	out_exp_lev.open(out_folder + "/expression_level.txt",ios::out);
@@ -287,29 +223,105 @@ int main (int argc, char** argv){
 	out_exp_lev.close();
 	out_d_exp_lev.close();
 
+	if ( print_extended_output ){
+		cout << "Print output\n";
+		string my_file;
+		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_delta, *out_ddelta;
+		// output files
+		my_file = out_folder + "/geneID.txt";
+		out_gene = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_gene == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
 
-	// Write likelihood
-	cout << "Print likelihood\n";
-	ofstream out_lik;
-    out_lik.open(out_folder + "/likelihood.txt",ios::out);
-	// write v values of bins in loglikelihood
-	double v;
-	for(k=0;k<(numbin-1);++k){
-		v = vmin*exp(deltav*k);
-		out_lik << v << "\t";
-	}
-	v = vmin*exp(deltav*(numbin-1));
-	out_lik << v << "\n";
-	for(g=0; g<G; ++g){
-		for(k=0;k<numbin;++k){
-			if(k<numbin-1){
-				out_lik << lik[g][k] << "\t";
-			}else{
-				out_lik << lik[g][k] << "\n";
+		my_file = out_folder + "/cellID.txt";
+		out_cell = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_cell == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+
+		my_file = out_folder + "/mu.txt";
+		out_mu = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_mu == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+
+		my_file = out_folder + "/d_mu.txt";
+		out_dmu = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_dmu == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+
+		my_file = out_folder + "/delta.txt";
+		out_delta = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_delta == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+
+		my_file = out_folder + "/ddelta.txt";
+		out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_ddelta == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+
+		// output cell name
+		for(i=1;i<C;i++){
+			fprintf(out_cell,"%s\n",cell_names[i].c_str());
+		}
+		fprintf(out_cell,"%s",cell_names[C].c_str());
+		for(g=0; g<G; ++g){
+			// Write gene names
+			fprintf(out_gene,"%s\n",gene_names[g].c_str());
+
+			//print best fit to file : mu, delta
+			// Print diagonal of invM : variance of mu, delta
+			fprintf(out_mu,"%lf\n",mu[g]);
+			fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
+			for(i=0;i<C-1;++i){
+				fprintf(out_delta,"%lf\t",delta[g][i]);
+				fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][i]));
+			}
+			fprintf(out_delta,"%lf\n",delta[g][C-1]);
+			fprintf(out_ddelta,"%lf\n",sqrt(var_delta[g][C-1]));
+		}
+		fclose(out_gene);
+		fclose(out_cell);
+		fclose(out_mu);
+		fclose(out_dmu);
+		fclose(out_delta);
+		fclose(out_ddelta);
+
+		// Write likelihood
+		cout << "Print likelihood\n";
+		ofstream out_lik;
+		out_lik.open(out_folder + "/likelihood.txt",ios::out);
+		// write v values of bins in loglikelihood
+		double v;
+		out_lik << "Variance\t";
+		for(k=0;k<(numbin-1);++k){
+			v = vmin*exp(deltav*k);
+			out_lik << v << "\t";
+		}
+		v = vmin*exp(deltav*(numbin-1));
+		out_lik << v << "\n";
+		for(g=0; g<G; ++g){
+			out_lik << gene_names[g] << "\t";
+			for(k=0;k<numbin;++k){
+				if(k<numbin-1){
+					out_lik << lik[g][k] << "\t";
+				}else{
+					out_lik << lik[g][k] << "\n";
+				}
 			}
 		}
+		out_lik.close();
 	}
-	out_lik.close();
 
     return 0;
 }
@@ -467,11 +479,10 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 	delete[] d_delta_v;
 	delete[] d_delta;
 	delete[] mu_v;
-	delete[] lik;
 	return;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads){
+void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output){
 
     if (argc<2)
         show_usage(argv[0]);
@@ -497,11 +508,14 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 		}
 	}
 
-    string to_find[3][2] = {{"-f", "--file"},{"-d", "--destination"},{"-n", "--n_threads"}};
+    string to_find[4][2] = {{"-f", "--file"},
+							{"-d", "--destination"},
+							{"-n", "--n_threads"},
+							{"-e", "--extended_output"}};
 
     int j;
     int idx;
-    for(j=0;j<3;j++){
+    for(j=0;j<4;j++){
         idx = 0;
         for(i=1;i<argc;i++){
             if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1]){
@@ -515,20 +529,17 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
                     case 0: in_file = argv[idx+1];
                     case 1: out_folder = argv[idx+1];
                     case 2: N_threads = atoi(argv[idx+1]);
+                    case 3: extended_output = argv[idx+1];
                 }
+				// remove last character of out_folder if it is '/'
 				if( j == 1 && out_folder.back() == '/' )
 					out_folder.pop_back();
             }
         }
-		// remove last character of out_folder if it is '/'
-        if (idx == 0){
-            switch(j){
-                case 0: { cerr << "Error in argument parsing :\n"
-                               << "missing input file name\n";
-                        show_usage;}
-                case 1: out_folder = "";
-                case 2: N_threads = 4;
-            }
+        if (idx == 0 && j == 0){
+        	cerr << "Error in argument parsing :\n"
+            << "missing input file name\n";
+            show_usage;	
         }
     }
 }
@@ -541,7 +552,8 @@ static void show_usage(string name)
          << "\t-v,--version\t\tShow the current version\n"
          << "\t-f,--file\t\tSpecify the input transcript count text file\n"
          << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
-         << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n";
+         << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
+         << "\t-e,--extended_output\tOption t print extended output (default: false)\n";
     exit(0);
 }
 
