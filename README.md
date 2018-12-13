@@ -78,4 +78,7 @@ cd TrueVar/src
 ```
 make
 ```
-* The binary is file is located in ```TrueVar/bin/TrueVar```
+* The binary is file is located in
+```
+TrueVar/bin/TrueVar
+```
