@@ -61,10 +61,19 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 ```
 
 ## Installation
-* library:
+* clone the GitHub repository
+```
+git clone https://github.com/jmbreda/TrueVar.git
+```
+* intall needed library
 ```
 sudo apt-get update
 sudo apt-get install libgomp1
 ```
-* Move to ```src``` directory
-* ```make```
+* Move to the source code directory
+```
+cd TrueVar/src
+```
+* Compile the code.
+```make```
+* The binary is file is located in ```TrueVar/bin```
