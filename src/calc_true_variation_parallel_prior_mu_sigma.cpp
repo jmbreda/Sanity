@@ -263,7 +263,7 @@ int main (int argc, char** argv){
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/ddelta.txt";
+		my_file = out_folder + "/d_delta.txt";
 		out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_ddelta == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
