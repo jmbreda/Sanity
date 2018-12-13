@@ -75,5 +75,7 @@ sudo apt-get install libgomp1
 cd TrueVar/src
 ```
 * Compile the code.
-```make```
-* The binary is file is located in ```TrueVar/bin```
+```
+make
+```
+* The binary is file is located in ```TrueVar/bin/TrueVar```
