@@ -61,6 +61,10 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 ```
 
 ## Installation
-* library: ```sudo apt-get update
-sudo apt-get install libgomp1```
-* in ```src```: ```make```
+* library:
+```
+sudo apt-get update
+sudo apt-get install libgomp1
+```
+* Move to ```src``` directory
+* ```make```
