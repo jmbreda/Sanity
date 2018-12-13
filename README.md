@@ -59,8 +59,8 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
 	-e,--extended_output	Option t print extended output (default: false)
 ```
----
 
 ## Installation
-* library: ```sudo apt-get install  ```
+* library: ```sudo apt-get update
+sudo apt-get install libgomp1```
 * in ```src```: ```make```
