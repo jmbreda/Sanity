@@ -5,7 +5,7 @@ TrueVar : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
 TrueVar infers the log expression levels x_gc of gene g in cell c by filtering out 
 the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 
-**Inputs** :
+## Input
 
   *Count Matrix* : *(N_g x N_c)* matrix with *N_g* the number of genes and *N_c* the number of cells
 
@@ -15,7 +15,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 | Gene 2 | 2.0 | 6.0 | 1.0 |
 | ... | |
 
-**Output** :
+## Output
 
 * *expression_level.txt* : *(N_g x N_c)* table of infered log expression levels
 
@@ -33,7 +33,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
   | Gene 2 | 0.0004 | 0.0051 | 0.0031 |
   | ... | |
 
-**Extended output (optional) :**
+## Extended output (optional)
 
 * mu.txt : *(N_g x 1)* vector of infered mean log expression levels
 * d_mu.txt : *(N_g x 1)* vector of infered error bars on mean log expression levels
@@ -48,7 +48,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
   | Gene 2 | 0.0006 | 0.0051 | 0.0031 |
   |...|
   
-**Usage** : 
+## Usage
 ```
   ./TrueVar <option(s)> SOURCES
   Options:
@@ -59,3 +59,8 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
 	-e,--extended_output	Option t print extended output (default: false)
 ```
+---
+
+## Installation
+* library: ```sudo apt-get install  ```
+* in ```src```: ```make```
