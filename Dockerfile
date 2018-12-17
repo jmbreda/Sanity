@@ -28,7 +28,6 @@ RUN apt-get update \
   && apt-get install --yes git make g++ libgomp1 \
   && git clone https://github.com/jmbreda/TrueVar.git \
   && cd TrueVar \
-  && git checkout e577b172ab47e28c56b2db36ba7eb298abf778b8 \
   && cd src \
   && make \
   && cp ../bin/TrueVar /usr/bin \

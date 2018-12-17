@@ -17,7 +17,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 
 ## Output
 
-* *expression_level.txt* : *(N_g x N_c)* table of infered log expression levels
+* *expression_level.txt* : *(N_g x N_c)* table of inferred log expression levels
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -25,7 +25,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
   | Gene 2 | -0.045 | -0.065 | 0.11 |
   | ... | |
 
-* d_expression_level.txt : *(N_g x N_c)* table of error bars on infered log expression levels
+* d_expression_level.txt : *(N_g x N_c)* table of error bars on inferred log expression levels
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -35,10 +35,10 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 
 ## Extended output (optional)
 
-* mu.txt : *(N_g x 1)* vector of infered mean log expression levels
-* d_mu.txt : *(N_g x 1)* vector of infered error bars on mean log expression levels
-* delta.txt : *(N_g x N_c)* matrix of infered log expression levels centered in 0
-* d_delta.txt : *(N_g x N_c)* matrix of infered error bars log expression levels centered in 0
+* mu.txt : *(N_g x 1)* vector of inferred mean log expression levels
+* d_mu.txt : *(N_g x 1)* vector of inferred error bars on mean log expression levels
+* delta.txt : *(N_g x N_c)* matrix of inferred log expression levels centered in 0
+* d_delta.txt : *(N_g x N_c)* matrix of inferred error bars log expression levels centered in 0
 * likelihood.txt : *(N_g+1 x N_b)* matrix of normalized variance likelihood per gene, with *N_b* the number of bins on the variance.
 
   | | | | | |
