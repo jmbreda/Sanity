@@ -51,10 +51,11 @@ int main (int argc, char** argv){
         ++C;
         token = strtok(NULL," \t");
     }
-    printf("There were %d cells\n",C-1);
+    C = C-1;
+    printf("There were %d cells\n",C);
 
     /***now go fill in the character names***/
-	string cell_names [C];
+	string cell_names [C+1];
     token = strtok(sc," \t");
     i=0;
     while(token){
@@ -62,7 +63,6 @@ int main (int argc, char** argv){
         ++i;
         token = strtok(NULL," \t");
     }
-    C = C-1;
 
     G_tmp = 0;
     while( fgets(ss,3000000,infp)){
@@ -195,19 +195,16 @@ int main (int argc, char** argv){
 	ofstream out_exp_lev, out_d_exp_lev;
 	out_exp_lev.open(out_folder + "/expression_level.txt",ios::out);
 	out_d_exp_lev.open(out_folder + "/d_expression_level.txt",ios::out);
-	out_exp_lev << "GeneID\t";
-	out_d_exp_lev << "GeneID\t";
-    for(i=1;i<C;i++){
-		out_exp_lev << cell_names[i].c_str();
-		out_d_exp_lev << cell_names[i].c_str();
-		if ( i < C-1 ){
-			out_exp_lev << "\t";
-			out_d_exp_lev << "\t";
-		}else{
-			out_exp_lev << "\n";
-			out_d_exp_lev << "\n";
-		}
+
+	out_exp_lev << "GeneID";
+	out_d_exp_lev << "GeneID";
+    for(i=1;i<C+1;i++){
+		out_exp_lev << "\t" << cell_names[i].c_str();
+		out_d_exp_lev << "\t" << cell_names[i].c_str();
 	}
+	out_exp_lev << "\n";
+	out_d_exp_lev << "\n";
+
 	for(g=0;g<G;g++){
 	out_exp_lev << gene_names[g].c_str();
 	out_d_exp_lev << gene_names[g].c_str();
@@ -215,7 +212,7 @@ int main (int argc, char** argv){
 			out_exp_lev << "\t" << mu[g] + delta[g][i];
 			out_d_exp_lev << "\t" << sqrt( var_mu[g] + var_delta[g][i] );
 		}
-		if ( g < G-1 ){
+		if ( g != G-1 ){
 			out_exp_lev << "\n";
 			out_d_exp_lev << "\n";
 		}
@@ -355,7 +352,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		//#pragma omp critical
 		q = fitfrac(f,n_c,n,v,C,N_c,a,b);
 
-		mu_v[k] = Psi_0(n+a) -q; /*** equation (85) ***/
+		mu_v[k] = Psi_0(n+a)-q; /*** equation (85) ***/
 
 		double tot = 0;
 		for(i=0;i<C;++i){
