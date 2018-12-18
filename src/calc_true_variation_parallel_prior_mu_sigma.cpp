@@ -58,8 +58,13 @@ int main (int argc, char** argv){
 	string cell_names [C+1];
     token = strtok(sc," \t");
     i=0;
+	int tmp;
     while(token){
-        cell_names[i] = token;
+		cell_names[i] = string(token);
+		tmp = cell_names[i].find('\n');
+		if (tmp > -1){
+			cell_names[i].erase(tmp,1);
+		}
         ++i;
         token = strtok(NULL," \t");
     }
