@@ -226,7 +226,7 @@ int main (int argc, char** argv){
 	out_d_exp_lev.close();
 
 	if ( print_extended_output ){
-		cout << "Print output\n";
+		cout << "Print extended output\n";
 		string my_file;
 		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_delta, *out_ddelta;
 		// output files
@@ -442,7 +442,6 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 	*/
 	
 	// Average delta, and mu
-	double w;
 	mu = 0.0;
 	for(k=0;k<numbin;k++){
 		mu += lik[k]*mu_v[k];
@@ -454,17 +453,15 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		var_mu += lik[k]*(mu_v[k] - mu)*(mu_v[k] - mu);
 	}
 
-	double *d_delta = new double [C];
+	// Compute <delta> = int p(v)*delta(v) dv
 	for(i=0;i<C;i++){
 		delta[i] = 0.0;
-		d_delta[i] = 0.0;
 		for(k=0;k<numbin;k++){
 			delta[i] += lik[k]*delta_v[k][i];
-			d_delta[i] += lik[k]*d_delta_v[k][i];
 		}
 	}
 		
-	// Compute var_delta = < (delta - <delta>)^2 > + <d_delta>
+	// Compute var_delta = < (delta - <delta>)^2 > + <d_delta^2>
 	for(i=0;i<C;i++){
 		var_delta[i] = 0.0;
 		for(k=0;k<numbin;k++){
@@ -479,7 +476,6 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
     }
 	delete[] delta_v;
 	delete[] d_delta_v;
-	delete[] d_delta;
 	delete[] mu_v;
 	return;
 }
