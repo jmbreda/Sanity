@@ -22,6 +22,7 @@ int main (int argc, char** argv){
 	
 	string in_file;
 	string out_folder;
+	//out_folder = '';
 	int N_threads;
 	string extended_output("false");
 	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output);
@@ -273,10 +274,9 @@ int main (int argc, char** argv){
 		}
 
 		// output cell name
-		for(i=1;i<C;i++){
+		for(i=1;i<C+1;i++){
 			fprintf(out_cell,"%s\n",cell_names[i].c_str());
 		}
-		fprintf(out_cell,"%s",cell_names[C].c_str());
 		for(g=0; g<G; ++g){
 			// Write gene names
 			fprintf(out_gene,"%s\n",gene_names[g].c_str());
