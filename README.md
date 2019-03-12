@@ -1,6 +1,6 @@
 # Sanity
 
-Sampling Noise based Inference of Transcription ActivitY : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
+**Sa**mpling **N**oise based **I**nference of **T**ranscription Activit**Y** : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
 
 Sanity infers the log expression levels x_gc of gene g in cell c by filtering out 
 the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
