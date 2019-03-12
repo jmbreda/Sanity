@@ -1,8 +1,8 @@
-# TrueVar
+# Sanity
 
-TrueVar : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
+Sanity : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
 
-TrueVar infers the log expression levels x_gc of gene g in cell c by filtering out 
+Sanity infers the log expression levels x_gc of gene g in cell c by filtering out 
 the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 
 ## Input
@@ -50,7 +50,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
   
 ## Usage
 ```
-  ./TrueVar <option(s)> SOURCES
+  ./Sanity <option(s)> SOURCES
   Options:
 	-h,--help		Show this help message
 	-v,--version		Show the current version
@@ -63,7 +63,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 ## Installation
 * clone the GitHub repository
 ```
-git clone https://github.com/jmbreda/TrueVar.git
+git clone https://github.com/jmbreda/Sanity.git
 ```
 * intall needed library
 ```
@@ -72,7 +72,7 @@ sudo apt-get install libgomp1
 ```
 * Move to the source code directory
 ```
-cd TrueVar/src
+cd Sanity/src
 ```
 * Compile the code.
 ```
@@ -80,5 +80,5 @@ make
 ```
 * The binary is file is located in
 ```
-TrueVar/bin/TrueVar
+Sanity/bin/Sanity
 ```
