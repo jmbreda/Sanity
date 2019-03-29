@@ -2,12 +2,12 @@
 
 **Sa**mpling **N**oise based **I**nference of **T**ranscription Activit**Y** : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
 
-Sanity infers the log expression levels x<sub>gc</sub> of gene g in cell c by filtering out 
-the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
+Sanity infers the log expression levels *x<sub>gc</sub>* of gene *g* in cell *c* by filtering out 
+the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *c*.
 
 ## Input
 
-  *Count Matrix* : *(N_g x N_c)* matrix with *N_g* the number of genes and *N_c* the number of cells
+  Count Matrix : *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
@@ -17,7 +17,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 
 ## Output
 
-* *expression_level.txt* : *(N_g x N_c)* table of inferred log expression levels
+* expression_level.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -25,7 +25,7 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
   | Gene 2 | -0.045 | -0.065 | 0.11 |
   | ... | |
 
-* d_expression_level.txt : *(N_g x N_c)* table of error bars on inferred log expression levels
+* d_expression_level.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of error bars on inferred log expression levels
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -35,11 +35,11 @@ the Poisson noise on the UMI count matrix n_gc of gene g in cell c.
 
 ## Extended output (optional)
 
-* mu.txt : *(N_g x 1)* vector of inferred mean log expression levels
-* d_mu.txt : *(N_g x 1)* vector of inferred error bars on mean log expression levels
-* delta.txt : *(N_g x N_c)* matrix of inferred log expression levels centered in 0
-* d_delta.txt : *(N_g x N_c)* matrix of inferred error bars log expression levels centered in 0
-* likelihood.txt : *(N_g+1 x N_b)* matrix of normalized variance likelihood per gene, with *N_b* the number of bins on the variance.
+* mu.txt : *(N<sub>g</sub> x 1)* vector of inferred mean log expression levels
+* d_mu.txt : *(N<sub>g</sub> x 1)* vector of inferred error bars on mean log expression levels
+* delta.txt : *(N<sub>g</sub> x N<sub>c</sub>)* matrix of inferred log expression levels centered in 0
+* d_delta.txt : *(N<sub>g</sub> x N<sub>c</sub>)* matrix of inferred error bars log expression levels centered in 0
+* likelihood.txt : *(N<sub>g</sub>+1 x N<sub>b</sub>)* matrix of normalized variance likelihood per gene, with *N<sub>b</sub>* the number of bins on the variance.
 
   | | | | | |
   |:-------|:------:|:------:|:------:|------:|
