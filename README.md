@@ -78,7 +78,7 @@ cd Sanity/src
 ```
 make
 ```
-* The binary is file is located in
+* The binary file is located in
 ```
 Sanity/bin/Sanity
 ```
