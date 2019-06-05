@@ -161,6 +161,7 @@ int main (int argc, char** argv){
 	// Compute output with best v
 	double *mu = new double [G];
 	double *var_mu = new double [G];
+	double *variance = new double [G];
 	double **delta = new double *[G];
 	double **var_delta = new double *[G];
 	for( g=0; g<G; ++g){
@@ -230,7 +231,6 @@ int main (int argc, char** argv){
 	if ( print_extended_output ){
 		
 		// Compute variance	
-		double *variance = new double [G];
         for(g=0; g<G; ++g){
 			variance[g] = 0.0;
 			for(k=0;k<numbin;++k){
@@ -325,7 +325,6 @@ int main (int argc, char** argv){
 		ofstream out_lik;
 		out_lik.open(out_folder + "/likelihood.txt",ios::out);
 		// write v values of bins in loglikelihood
-		double v;
 		out_lik << "Variance\t";
 		for(k=0;k<(numbin-1);++k){
 			v = vmin*exp(deltav*k);
