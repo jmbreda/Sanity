@@ -272,8 +272,8 @@ int main (int argc, char** argv){
 		}
 
 		my_file = out_folder + "/variance.txt";
-		out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
-		if(out_ddelta == NULL){
+		out_variance = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_variance == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
