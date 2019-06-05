@@ -37,6 +37,7 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 * mu.txt : *(N<sub>g</sub> x 1)* vector of inferred mean log expression levels
 * d_mu.txt : *(N<sub>g</sub> x 1)* vector of inferred error bars on mean log expression levels
+* variance.txt : *(N<sub>g</sub> x 1)* vector of inferred variance per gene in log expression levels
 * delta.txt : *(N<sub>g</sub> x N<sub>c</sub>)* matrix of inferred log expression levels centered in 0
 * d_delta.txt : *(N<sub>g</sub> x N<sub>c</sub>)* matrix of inferred error bars log expression levels centered in 0
 * likelihood.txt : *(N<sub>g</sub>+1 x N<sub>b</sub>)* matrix of normalized variance likelihood per gene, with *N<sub>b</sub>* the number of bins on the variance.
