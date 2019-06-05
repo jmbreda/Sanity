@@ -15,6 +15,7 @@ using namespace std;
 
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
+double get_epsilon(double &d, double &v, double &n, double &f, double &a);
 void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output);
 static void show_usage(string name);
 
@@ -167,6 +168,7 @@ int main (int argc, char** argv){
 		var_delta[g] = new double [C];
 	}
 
+	double v;	
 	double vmin = 0.01;
     double vmax = 20.0;
 	int numbin = 116;
@@ -191,10 +193,9 @@ int main (int argc, char** argv){
 	#pragma omp parallel for num_threads(N_threads)
     for(g=0;g<G;++g){
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g]);
-	}
-	
+	}	
 
-	// Write output files	
+	// Write output files
 
 	cout << "Print output\n";
 	// Write log expression table and error bars table
@@ -227,9 +228,20 @@ int main (int argc, char** argv){
 	out_d_exp_lev.close();
 
 	if ( print_extended_output ){
+		
+		// Compute variance	
+		double *variance = new double [G];
+        for(g=0; g<G; ++g){
+			variance[g] = 0.0;
+			for(k=0;k<numbin;++k){
+				v = vmin * exp(deltav*k);
+				variance[g] += v*lik[g][k];
+			}
+		}
+
 		cout << "Print extended output\n";
 		string my_file;
-		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_delta, *out_ddelta;
+		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_delta, *out_ddelta, *out_variance;
 		// output files
 		my_file = out_folder + "/geneID.txt";
 		out_gene = (FILE *) fopen(my_file.c_str(),"w");
@@ -259,6 +271,13 @@ int main (int argc, char** argv){
 			exit(EXIT_FAILURE);
 		}
 
+		my_file = out_folder + "/variance.txt";
+		out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_ddelta == NULL){
+			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+
 		my_file = out_folder + "/delta.txt";
 		out_delta = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_delta == NULL){
@@ -273,6 +292,7 @@ int main (int argc, char** argv){
 			exit(EXIT_FAILURE);
 		}
 
+
 		// output cell name
 		for(i=1;i<C+1;i++){
 			fprintf(out_cell,"%s\n",cell_names[i].c_str());
@@ -285,6 +305,7 @@ int main (int argc, char** argv){
 			// Print diagonal of invM : variance of mu, delta
 			fprintf(out_mu,"%lf\n",mu[g]);
 			fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
+			fprintf(out_variance,"%lf\n",variance[g]);
 			for(i=0;i<C-1;++i){
 				fprintf(out_delta,"%lf\t",delta[g][i]);
 				fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][i]));
@@ -296,11 +317,11 @@ int main (int argc, char** argv){
 		fclose(out_cell);
 		fclose(out_mu);
 		fclose(out_dmu);
+		fclose(out_variance);
 		fclose(out_delta);
 		fclose(out_ddelta);
 
 		// Write likelihood
-		cout << "Print likelihood\n";
 		ofstream out_lik;
 		out_lik.open(out_folder + "/likelihood.txt",ios::out);
 		// write v values of bins in loglikelihood
@@ -406,10 +427,17 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		for(i=0;i<C;i++){
 			d_delta_num[i] = d_delta_den1 + d_delta_c[i];
 		}
-		/* Finally compute Delta_delta */
+		/* compute d_delta */
 		for(i=0;i<C;++i){
 			d_delta_v[k][i] = d_delta_num[i]/(d_delta_den1*d_delta_den2[i]);
 		}
+
+        // fix computation of asymmetric d_delta for zero count
+        for(i=0;i<C;++i){
+            if(n_c[i]==0.0){
+                d_delta_v[k][i] = get_epsilon(delta_v[k][i],v,n,f[i],a);
+            }
+        }
 	}// end v bins loop
 	
 	
@@ -478,6 +506,31 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 	delete[] d_delta_v;
 	delete[] mu_v;
 	return;
+}
+
+double get_epsilon(double &d, double &v, double &n, double &f, double &a){
+
+    double e;
+    double dL;
+    double e_low = 0.0;
+    double e_high = 0.0;
+    double vnf = v*(n+a)*f;
+    e_high = ( -(d+vnf) + sqrt( (d+vnf)*(d+vnf) + v*(1.0 + vnf) ) )/(1.0 + vnf);
+
+    // bisection method :
+    double tol = 0.0000001;
+    double diff = 1.0;
+    while(diff > tol){
+        e = (e_high+e_low)/2.0;
+        dL = e*(2.0*d+e)/(2.0*v) + (n+a)*f*(exp(e)-1.0);
+        if(dL < 0.5){
+            e_low = e;
+        }else{
+            e_high = e;
+        }
+        diff = fabs(dL-0.5);
+    }
+    return e;
 }
 
 void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output){
