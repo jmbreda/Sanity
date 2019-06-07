@@ -15,7 +15,7 @@ using namespace std;
 
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
-double get_epsilon(double &d, double &v, double &n, double &f, double &a);
+double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
 void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output);
 static void show_usage(string name);
 
@@ -241,7 +241,7 @@ int main (int argc, char** argv){
 
 		cout << "Print extended output\n";
 		string my_file;
-		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_delta, *out_ddelta, *out_variance;
+		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_variance, *out_delta, *out_ddelta;
 		// output files
 		my_file = out_folder + "/geneID.txt";
 		out_gene = (FILE *) fopen(my_file.c_str(),"w");
@@ -353,10 +353,10 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
     double beta,L,ldet,q,delsq,inv_v;
 	double *f = new double[C];
 	double **delta_v = new double *[numbin];
-    double **d_delta_v = new double *[numbin];
+    double **sig2_delta_v = new double *[numbin];
     for(k=0;k<numbin;++k){
         delta_v[k] = new double [C];
-        d_delta_v[k] = new double [C];
+        sig2_delta_v[k] = new double [C];
     }
 
 	double *mu_v = new double[numbin];
@@ -366,10 +366,10 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
     deltav = log(vmax/vmin)/((double) numbin-1);
 
 	/*** Compute to compute var of delta ***/
-    double d_delta_c [C];
-    double d_delta_num [C];
-    double d_delta_den2 [C];
-    double d_delta_den1;
+    double sig2_delta_c [C];
+    double sig2_delta_num [C];
+    double sig2_delta_den2 [C];
+    double sig2_delta_den1;
 
 	for(k=0;k<numbin;++k){
 		v = vmin * exp(deltav*k);
@@ -414,27 +414,27 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		/* compute nf^2/(nf+1/sigma^2) for each c */
 		inv_v = 1.0/v;
 		for(i=0;i<C;++i){
-			d_delta_c[i] = (n+a)*f[i]*f[i]/((n+a)*f[i] + inv_v);
+			sig2_delta_c[i] = (n+a)*f[i]*f[i]/((n+a)*f[i] + inv_v);
 		}
 		/* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
-		d_delta_den1 = 1.0;
+		sig2_delta_den1 = 1.0;
 		for(i=0;i<C;++i){
-			d_delta_den1 -= d_delta_c[i];
-			d_delta_den2[i] = (n+a)*f[i] + inv_v;
+			sig2_delta_den1 -= sig2_delta_c[i];
+			sig2_delta_den2[i] = (n+a)*f[i] + inv_v;
 		}
 		/* compute the different terms in the numerator : remove the \tilde{c} terms */
 		for(i=0;i<C;i++){
-			d_delta_num[i] = d_delta_den1 + d_delta_c[i];
+			sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
 		}
-		/* compute d_delta */
+		/* compute sig2_delta */
 		for(i=0;i<C;++i){
-			d_delta_v[k][i] = d_delta_num[i]/(d_delta_den1*d_delta_den2[i]);
+			sig2_delta_v[k][i] = sig2_delta_num[i]/(sig2_delta_den1*sig2_delta_den2[i]);
 		}
 
-        // fix computation of asymmetric d_delta for zero count
+        // fix computation of asymmetric sig2_delta for zero count
         for(i=0;i<C;++i){
-            if(n_c[i]==0.0){
-                d_delta_v[k][i] = get_epsilon(delta_v[k][i],v,n,f[i],a);
+            if(n_c[i]<=0.5){
+                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i],v,n,f[i],a);
             }
         }
 	}// end v bins loop
@@ -488,26 +488,26 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		}
 	}
 		
-	// Compute var_delta = < (delta - <delta>)^2 > + <d_delta^2>
+	// Compute var_delta = < (delta - <delta>)^2 > + <sig2_delta^2>
 	for(i=0;i<C;i++){
 		var_delta[i] = 0.0;
 		for(k=0;k<numbin;k++){
-			var_delta[i] += lik[k]*(delta_v[k][i]-delta[i])*(delta_v[k][i]-delta[i]) + lik[k]*d_delta_v[k][i]*d_delta_v[k][i];
+			var_delta[i] += lik[k]*(delta_v[k][i]-delta[i])*(delta_v[k][i]-delta[i]) + lik[k]*sig2_delta_v[k][i];
 		}
 	}
 
 	delete[] f;
 	for(k=0;k<numbin;++k){
         delete[] delta_v[k];
-        delete[] d_delta_v[k];
+        delete[] sig2_delta_v[k];
     }
 	delete[] delta_v;
-	delete[] d_delta_v;
+	delete[] sig2_delta_v;
 	delete[] mu_v;
 	return;
 }
 
-double get_epsilon(double &d, double &v, double &n, double &f, double &a){
+double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
 
     double e;
     double dL;
@@ -529,7 +529,7 @@ double get_epsilon(double &d, double &v, double &n, double &f, double &a){
         }
         diff = fabs(dL-0.5);
     }
-    return e;
+    return e*e;
 }
 
 void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output){
