@@ -7,13 +7,17 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 ## Input
 
-  Count Matrix : *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells
+* Count Matrix : *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. tsv or csv format.
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
 | Gene 1 | 1.0 | 3.0 | 0.0 |
 | Gene 2 | 2.0 | 6.0 | 1.0 |
 | ... | |
+
+* (optional) Destination folder (`'path/to/output/folder'`).
+* (optional) Number of threads (`int` number).
+* (optional) Print extended output (Boolean: `'true', 'false', '1'` or `'0'`)
 
 ## Output
 
