@@ -17,7 +17,7 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 * (optional) Destination folder (`'path/to/output/folder'`).
 * (optional) Number of threads (integer number).
-* (optional) Print extended output (Boolean, e.g. `'true', 'false', '1'` or `'0'`)
+* (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`)
 
 ## Output
 
