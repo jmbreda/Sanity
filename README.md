@@ -87,3 +87,6 @@ make
 ```
 Sanity/bin/Sanity
 ```
+
+## Help
+For any questions or assistance regarding Sanity, please contact us at jeremie.breda@unibas.ch
