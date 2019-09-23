@@ -22,8 +22,7 @@ static void show_usage(string name);
 int main (int argc, char** argv){
 	
 	string in_file;
-	string out_folder;
-	//out_folder = '';
+	string out_folder("");
 	int N_threads;
 	string extended_output("false");
 	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output);
@@ -161,7 +160,7 @@ int main (int argc, char** argv){
 	// Compute output with best v
 	double *mu = new double [G];
 	double *var_mu = new double [G];
-	double *variance = new double [G];
+	double *var_gene = new double [G];
 	double **delta = new double *[G];
 	double **var_delta = new double *[G];
 	for( g=0; g<G; ++g){
@@ -201,8 +200,8 @@ int main (int argc, char** argv){
 	cout << "Print output\n";
 	// Write log expression table and error bars table
 	ofstream out_exp_lev, out_d_exp_lev;
-	out_exp_lev.open(out_folder + "/expression_level.txt",ios::out);
-	out_d_exp_lev.open(out_folder + "/d_expression_level.txt",ios::out);
+	out_exp_lev.open(out_folder + "expression_level.txt",ios::out);
+	out_d_exp_lev.open(out_folder + "d_expression_level.txt",ios::out);
 
 	out_exp_lev << "GeneID";
 	out_d_exp_lev << "GeneID";
@@ -232,60 +231,60 @@ int main (int argc, char** argv){
 		
 		// Compute variance	
         for(g=0; g<G; ++g){
-			variance[g] = 0.0;
+			var_gene[g] = 0.0;
 			for(k=0;k<numbin;++k){
 				v = vmin * exp(deltav*k);
-				variance[g] += v*lik[g][k];
+				var_gene[g] += v*lik[g][k];
 			}
 		}
 
 		cout << "Print extended output\n";
 		string my_file;
-		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_variance, *out_delta, *out_ddelta;
+		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_var_gene, *out_delta, *out_ddelta;
 		// output files
-		my_file = out_folder + "/geneID.txt";
+		my_file = out_folder + "geneID.txt";
 		out_gene = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_gene == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/cellID.txt";
+		my_file = out_folder + "cellID.txt";
 		out_cell = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_cell == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/mu.txt";
+		my_file = out_folder + "mu.txt";
 		out_mu = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_mu == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/d_mu.txt";
+		my_file = out_folder + "d_mu.txt";
 		out_dmu = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_dmu == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/variance.txt";
-		out_variance = (FILE *) fopen(my_file.c_str(),"w");
-		if(out_variance == NULL){
+		my_file = out_folder + "variance.txt";
+		out_var_gene = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_var_gene == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/delta.txt";
+		my_file = out_folder + "delta.txt";
 		out_delta = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_delta == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "/d_delta.txt";
+		my_file = out_folder + "d_delta.txt";
 		out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_ddelta == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
@@ -305,7 +304,7 @@ int main (int argc, char** argv){
 			// Print diagonal of invM : variance of mu, delta
 			fprintf(out_mu,"%lf\n",mu[g]);
 			fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
-			fprintf(out_variance,"%lf\n",variance[g]);
+			fprintf(out_var_gene,"%lf\n",var_gene[g]);
 			for(i=0;i<C-1;++i){
 				fprintf(out_delta,"%lf\t",delta[g][i]);
 				fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][i]));
@@ -317,13 +316,13 @@ int main (int argc, char** argv){
 		fclose(out_cell);
 		fclose(out_mu);
 		fclose(out_dmu);
-		fclose(out_variance);
+		fclose(out_var_gene);
 		fclose(out_delta);
 		fclose(out_ddelta);
 
 		// Write likelihood
 		ofstream out_lik;
-		out_lik.open(out_folder + "/likelihood.txt",ios::out);
+		out_lik.open(out_folder + "likelihood.txt",ios::out);
 		// write v values of bins in loglikelihood
 		out_lik << "Variance\t";
 		for(k=0;k<(numbin-1);++k){
@@ -575,15 +574,14 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
                          << argv[i] << " option missing\n";
                     show_usage(argv[0]);
                 }
-                switch(j){
-                    case 0: in_file = argv[idx+1];
-                    case 1: out_folder = argv[idx+1];
-                    case 2: N_threads = atoi(argv[idx+1]);
-                    case 3: extended_output = argv[idx+1];
-                }
-				// remove last character of out_folder if it is '/'
-				if( j == 1 && out_folder.back() == '/' )
-					out_folder.pop_back();
+				if(j==0) in_file = argv[idx+1];
+				if(j==1) out_folder = argv[idx+1];
+				if(j==2) N_threads = atoi(argv[idx+1]);
+				if(j==3) extended_output = argv[idx+1];
+
+				// add '/' to out_folder if not already
+				if( j == 1 && out_folder.back() != '/' )
+					out_folder = out_folder + '/';
             }
         }
         if (idx == 0 && j == 0){
