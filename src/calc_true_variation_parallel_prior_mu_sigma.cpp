@@ -191,7 +191,7 @@ int main (int argc, char** argv){
    	// Get Loglikelihood :
 	cout << "Fit gene expression levels\n";
 	#pragma omp parallel for num_threads(N_threads)
-    for(g=0;g<G;++g){
+	for(g=0;g<G;++g){
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g]);
 	}	
 
@@ -359,7 +359,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
     }
 
 	double *mu_v = new double[numbin];
-	double Lmax = -1000000000.0;
+	double Lmax = -1e+100;
     double v;
 	double deltav;
     deltav = log(vmax/vmin)/((double) numbin-1);
@@ -587,7 +587,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
         if (idx == 0 && j == 0){
         	cerr << "Error in argument parsing :\n"
             << "missing input file name\n";
-            show_usage;	
+			show_usage;
         }
     }
 }
