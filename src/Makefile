@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS= -I. -O2 -fopenmp -std=c++11
+CFLAGS= -I. -O2 -ffast-math -O3 -fopenmp -std=c++11
 
 Sanity: calc_true_variation_parallel_prior_mu_sigma.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o

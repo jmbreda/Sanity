@@ -157,6 +157,13 @@ int main (int argc, char** argv){
 	delete[] n_tmp;
 	delete[] n_c_tmp;
 
+	// alpha and beta of gamma prior on mu
+	double a;
+	double b;
+	a = 1.0;
+	b = 0.0;
+	cout << "Gamma prior on mu:\na=" << a << "\tb=" << b << "\n";
+
 	// Compute output with best v
 	double *mu = new double [G];
 	double *var_mu = new double [G];
@@ -168,7 +175,7 @@ int main (int argc, char** argv){
 		var_delta[g] = new double [C];
 	}
 
-	double v;	
+	double v;
 	double vmin = 0.01;
     double vmax = 20.0;
 	int numbin = 116;
@@ -181,19 +188,13 @@ int main (int argc, char** argv){
 			lik[g][k] = -1.0; 
 	}
 
-	// alpha and beta of gamma prior on mu
-	double a;
-	double b;
-	a = 1.0;
-	b = 0.0;
-	cout << "Gamma prior on mu:\na=" << a << "\tb=" << b << "\n";
 
    	// Get Loglikelihood :
 	cout << "Fit gene expression levels\n";
 	#pragma omp parallel for num_threads(N_threads)
 	for(g=0;g<G;++g){
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g]);
-	}	
+	}
 
 	// Write output files
 
