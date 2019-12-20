@@ -16,7 +16,7 @@ using namespace std;
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output);
+void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, int &N_char);
 static void show_usage(string name);
 
 int main (int argc, char** argv){
@@ -25,7 +25,8 @@ int main (int argc, char** argv){
 	string out_folder("");
 	int N_threads;
 	string extended_output("false");
-	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output);
+	int N_char;
+	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output, N_char);
 
 	bool print_extended_output(false);
 	if ( extended_output == "true" || extended_output == "1" )
@@ -33,7 +34,8 @@ int main (int argc, char** argv){
 
     int g, i, k;
     int G_tmp, C;
-    char ss[3000000],sc[3000000];
+    char *ss = new char [N_char];
+	char *sc = new char [N_char];
 
     FILE *infp; 
     infp = (FILE *) fopen(in_file.c_str(),"r");
@@ -43,7 +45,7 @@ int main (int argc, char** argv){
     }
 
     /***First line should have the names of the columns (sample names)***/
-    fgets(ss,3000000,infp);
+    fgets(ss,N_char,infp);
     strcpy(sc,ss);
     char *token = strtok(ss," \t");
 
@@ -56,7 +58,7 @@ int main (int argc, char** argv){
     printf("There were %d cells\n",C);
 
     /***now go fill in the character names***/
-	string cell_names [C+1];
+	string *cell_names = new string [C+1];
     token = strtok(sc," \t");
     i=0;
 	int tmp;
@@ -71,7 +73,7 @@ int main (int argc, char** argv){
     }
 
     G_tmp = 0;
-    while( fgets(ss,3000000,infp)){
+    while( fgets(ss,N_char,infp)){
         ++G_tmp;
     }
     fclose(infp);
@@ -102,10 +104,10 @@ int main (int argc, char** argv){
     /**reopen file to read the counts***/
     infp = (FILE *) fopen(in_file.c_str(),"r");
     /***first line has names***/
-    fgets(ss,3000000,infp);
+    fgets(ss,N_char,infp);
     char *retval;
     for(g=0; g<G_tmp; ++g){
-        retval = fgets(ss,3000000,infp);
+        retval = fgets(ss,N_char,infp);
         if(retval == NULL){
             fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
             return (0);
@@ -136,6 +138,8 @@ int main (int argc, char** argv){
         }
     }
     fclose(infp);
+	delete[] ss;
+	delete[] sc;
 
 	// Now get  gene_names, n_c and n for expressed genes only
     printf("There were %d genes expressed\n",G);
@@ -359,17 +363,17 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
         sig2_delta_v[k] = new double [C];
     }
 
+	/*** To compute var of delta ***/
+    double *sig2_delta_c = new double [C];
+    double *sig2_delta_num = new double [C];
+    double *sig2_delta_den2 = new double [C];
+    double sig2_delta_den1;
+
 	double *mu_v = new double[numbin];
 	double Lmax = -1e+100;
     double v;
 	double deltav;
     deltav = log(vmax/vmin)/((double) numbin-1);
-
-	/*** Compute to compute var of delta ***/
-    double sig2_delta_c [C];
-    double sig2_delta_num [C];
-    double sig2_delta_den2 [C];
-    double sig2_delta_den1;
 
 	for(k=0;k<numbin;++k){
 		v = vmin * exp(deltav*k);
@@ -503,6 +507,9 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
     }
 	delete[] delta_v;
 	delete[] sig2_delta_v;
+	delete[] sig2_delta_c;
+    delete[] sig2_delta_num;
+    delete[] sig2_delta_den2;
 	delete[] mu_v;
 	return;
 }
@@ -532,7 +539,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
     return e*e;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output){
+void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, int &N_char){
 
     if (argc<2)
         show_usage(argv[0]);
@@ -591,6 +598,24 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 			show_usage;
         }
     }
+
+	// Get number of Character in first row, for iobuffer
+	string command = "head -1 " + in_file + "|wc -c>.tmp";
+	int out = system(command.c_str());
+    ifstream myfile (".tmp"); 
+    string line;
+    if (myfile.is_open()){
+        getline (myfile,line);
+        myfile.close();
+		N_char = atoi(line.c_str());
+		command = "rm .tmp";
+		out = system(command.c_str());
+    }
+    else{
+		cout << "Unable to open .tpm\n";
+		N_char = 10000000;
+	}
+	N_char = N_char + 100;
 }
 
 static void show_usage(string name)
