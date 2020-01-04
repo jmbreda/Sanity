@@ -5,6 +5,10 @@
 Sanity infers the log expression levels *x<sub>gc</sub>* of gene *g* in cell *c* by filtering out 
 the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *c*.
 
+See our [preprint](https://doi.org/10.1101/2019.12.28.889956 "bioRxiv: Bayesian inference of the gene expression states of single cells from scRNA-seq data") for more detail.
+
+
+
 ## Input
 
 * Count Matrix : *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. tsv or csv format.
