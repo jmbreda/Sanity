@@ -23,7 +23,7 @@ int main (int argc, char** argv){
 	
 	string in_file;
 	string out_folder("");
-	int N_threads;
+	int N_threads(4);
 	string extended_output("false");
 	int N_char;
 	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output, N_char);
