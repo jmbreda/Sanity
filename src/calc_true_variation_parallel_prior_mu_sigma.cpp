@@ -205,8 +205,8 @@ int main (int argc, char** argv){
 	cout << "Print output\n";
 	// Write log expression table and error bars table
 	ofstream out_exp_lev, out_d_exp_lev;
-	out_exp_lev.open(out_folder + "expression_level.txt",ios::out);
-	out_d_exp_lev.open(out_folder + "d_expression_level.txt",ios::out);
+	out_exp_lev.open(out_folder + "log_transcription_quotients.txt",ios::out);
+	out_d_exp_lev.open(out_folder + "ltq_error_bars.txt",ios::out);
 
 	out_exp_lev << "GeneID";
 	out_d_exp_lev << "GeneID";
