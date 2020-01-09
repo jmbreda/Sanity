@@ -85,12 +85,15 @@ git clone https://github.com/jmbreda/Sanity.git
 	sudo apt-get install libgomp1
 	```
 	
-	* On mac OS  
-	Install the `gcc9` package via macports, and switch to `Makefile_macOS` for compilation
-	```
-	port install gcc9
-	mv Sanity/src/Makefile_macOS Sanity/src/Makefile
-	```
+	* On mac OS using macports
+	Install the `gcc9` package  
+	`port install gcc9`  
+	Change the first line of `src/Makefile` for compilation from `CC=g++` to `CC=g++-mp-9`
+	
+	* On mac OS using brew
+	Install the `gcc9` package  
+	`brew install gcc9`  
+	Change the first line of `src/Makefile` for compilation from `CC=g++` to `CC=g++-9`
 * Move to the source code directory and compile
 ```
 cd Sanity/src
