@@ -166,7 +166,6 @@ int main (int argc, char** argv){
 	double b;
 	a = 1.0;
 	b = 0.0;
-	cout << "Gamma prior on mu:\na=" << a << "\tb=" << b << "\n";
 
 	// Compute output with best v
 	double *mu = new double [G];
