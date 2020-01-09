@@ -28,7 +28,7 @@ Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*too
 
 ## Output
 
-* expression_level.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
+* log_transcription_quotients.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -36,7 +36,7 @@ Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*too
   | Gene 2 | -0.045 | -0.065 | 0.11 |
   | ... | |
 
-* d_expression_level.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of error bars on inferred log expression levels
+* ltq_error_bars.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of error bars on inferred log expression levels
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
