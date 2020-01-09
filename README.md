@@ -73,26 +73,36 @@ Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*too
 ```
 
 ## Installation
-* clone the GitHub repository
+* Clone the GitHub repository
 ```
 git clone https://github.com/jmbreda/Sanity.git
 ```
-* intall needed library
-```
-sudo apt-get update
-sudo apt-get install libgomp1
-```
-* Move to the source code directory
+* Install OpenMP library
+	* On Linux  
+	If not already installed (Check with `ldconfig -p | grep libgomp`, no output if not installed), do
+	```
+	sudo apt-get update
+	sudo apt-get install libgomp1
+	```
+	
+	* On mac OS  
+	Install the `gcc9` package via macports, and switch to `Makefile_macOS` for compilation
+	```
+	port install gcc9
+	mv Sanity/src/Makefile_macOS Sanity/src/Makefile
+	```
+* Move to the source code directory and compile
 ```
 cd Sanity/src
-```
-* Compile the code.
-```
 make
 ```
 * The binary file is located in
 ```
 Sanity/bin/Sanity
+```
+* Alternatively, the already compiled binary for macOS is located in
+```
+Sanity/bin/Sanity_macOS
 ```
 
 ## Help
