@@ -16,7 +16,7 @@ using namespace std;
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, int &N_char);
+void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, double &vmin, double &vmax, int &numbin, int &N_char);
 static void show_usage(string name);
 
 int main (int argc, char** argv){
@@ -25,8 +25,11 @@ int main (int argc, char** argv){
 	string out_folder("");
 	int N_threads(4);
 	string extended_output("false");
+	double vmin = 0.01;
+    double vmax = 20.0;
+	int numbin = 116;
 	int N_char;
-	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output, N_char);
+	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output, vmin, vmax, numbin, N_char);
 
 	bool print_extended_output(false);
 	if ( extended_output == "true" || extended_output == "1" )
@@ -179,9 +182,6 @@ int main (int argc, char** argv){
 	}
 
 	double v;
-	double vmin = 0.01;
-    double vmax = 20.0;
-	int numbin = 116;
 	double deltav = log(vmax/vmin)/((double) numbin-1);
     /*** Declare output variable Likelihood ***/
 	double **lik = new double *[G];
@@ -538,7 +538,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
     return e*e;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, int &N_char){
+void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, double &vmin, double &vmax, int &numbin, int &N_char){
 
     if (argc<2)
         show_usage(argv[0]);
@@ -564,10 +564,13 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 		}
 	}
 
-    string to_find[4][2] = {{"-f", "--file"},
+    string to_find[7][2] = {{"-f", "--file"},
 							{"-d", "--destination"},
 							{"-n", "--n_threads"},
-							{"-e", "--extended_output"}};
+							{"-e", "--extended_output"},
+         					{"-vmin", "--variance_min"},
+         					{"-vmax", "--variance_max"},
+					    	{"-nbin", "--number_of_variance_bins"}};
 
     int j;
     int idx;
@@ -585,6 +588,9 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 				if(j==1) out_folder = argv[idx+1];
 				if(j==2) N_threads = atoi(argv[idx+1]);
 				if(j==3) extended_output = argv[idx+1];
+				if(j==4) vmin = atof(argv[idx+1]);
+				if(j==5) vmax = atof(argv[idx+1]);
+				if(j==6) numbin = atoi(argv[idx+1]);
 
 				// add '/' to out_folder if not already
 				if( j == 1 && out_folder.back() != '/' )
@@ -611,10 +617,10 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 		out = system(command.c_str());
     }
     else{
-		cout << "Unable to open .tpm\n";
+		cerr << "Unable to open .tpm\n";
 		N_char = 10000000;
 	}
-	N_char = N_char + 100;
+	N_char = 2*N_char;
 }
 
 static void show_usage(string name)
@@ -626,9 +632,9 @@ static void show_usage(string name)
          << "\t-f,--file\t\tSpecify the input transcript count text file\n"
          << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
          << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
-         << "\t-e,--extended_output\tOption t print extended output (default: false)\n";
+         << "\t-e,--extended_output\tOption to print extended output (default: false)\n"
+         << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.01)\n"
+         << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 20)\n"
+         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 116)\n";
     exit(0);
 }
-
-
-
