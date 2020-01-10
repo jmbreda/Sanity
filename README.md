@@ -22,10 +22,11 @@ Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*too
 | Gene 2 | 2.0 | 6.0 | 1.0 |
 | ... | |
 
-* (optional) Destination folder (`'path/to/output/folder'`).
-* (optional) Number of threads (integer number).
+* (optional) Destination folder (`'path/to/output/folder'`)
+* (optional) Number of threads (integer)
 * (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`)
-
+* (optional) Minimal and maximal considered values of the variance in log transcription quotients (double)
+* (optional) Number of bins for the variance in log transcription quotients (integer)
 ## Output
 
 * log_transcription_quotients.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
@@ -69,7 +70,10 @@ Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*too
 	-f,--file		Specify the input transcript count text file
 	-d,--destination	Specify the destination path (default: pwd)
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
-	-e,--extended_output	Option t print extended output (default: false)
+	-e,--extended_output	Option to print extended output (default: false)
+	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.01)
+	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 20)
+	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 116)
 ```
 
 ## Installation
