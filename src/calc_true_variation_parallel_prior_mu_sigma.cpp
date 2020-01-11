@@ -574,7 +574,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 
     int j;
     int idx;
-    for(j=0;j<4;j++){
+    for(j=0;j<7;j++){
         idx = 0;
         for(i=1;i<argc;i++){
             if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1]){
