@@ -605,19 +605,19 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
     }
 
 	// Get number of Character in first row, for iobuffer
-	string command = "head -1 " + in_file + "|wc -c>.tmp";
+	string command = "head -1 " + in_file + "|wc -c>" + out_folder + "tmp";
 	int out = system(command.c_str());
-    ifstream myfile (".tmp"); 
+    ifstream myfile (out_folder + "tmp");
     string line;
     if (myfile.is_open()){
         getline (myfile,line);
         myfile.close();
 		N_char = atoi(line.c_str());
-		command = "rm .tmp";
+		command = "rm " + out_folder + "tmp";
 		out = system(command.c_str());
     }
     else{
-		cerr << "Unable to open .tpm\n";
+		cerr << "Unable to open " + out_folder + "tmp\n";
 		N_char = 10000000;
 	}
 	N_char = 2*N_char;
