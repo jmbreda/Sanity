@@ -17,11 +17,11 @@ using namespace std;
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
 void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, double &vmin, double &vmax, int &numbin, int &N_char);
-static void show_usage(string name);
+static void show_usage(void);
 
 int main (int argc, char** argv){
 	
-	string in_file;
+	string in_file("");
 	string out_folder("");
 	int N_threads(4);
 	string extended_output("false");
@@ -50,19 +50,19 @@ int main (int argc, char** argv){
     /***First line should have the names of the columns (sample names)***/
     fgets(ss,N_char,infp);
     strcpy(sc,ss);
-    char *token = strtok(ss," \t");
+    char *token = strtok(ss," \t,");
 
     C = 0;
     while(token){
         ++C;
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
     }
     C = C-1;
     printf("There were %d cells\n",C);
 
     /***now go fill in the character names***/
 	string *cell_names = new string [C+1];
-    token = strtok(sc," \t");
+    token = strtok(sc," \t,");
     i=0;
 	int tmp;
     while(token){
@@ -72,7 +72,7 @@ int main (int argc, char** argv){
 			cell_names[i].erase(tmp,1);
 		}
         ++i;
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
     }
 
     G_tmp = 0;
@@ -117,12 +117,12 @@ int main (int argc, char** argv){
         }
         /***cut the line based on spaces/tabs***/
         strcpy(sc,ss);
-        token = strtok(ss," \t");
+        token = strtok(ss," \t,");
         gene_names_tmp[g] = token;
 		n_tmp[g] = 0;
         for(i=0; i<C; ++i){
             /****go to the next in the list of words****/
-            token = strtok(NULL," \t");
+            token = strtok(NULL," \t,");
             if(token != NULL){
                 n_c_tmp[g][i] = atoi(token);
 				n_tmp[g] += n_c_tmp[g][i];/**total count this gene**/
@@ -135,7 +135,7 @@ int main (int argc, char** argv){
 		if (n_tmp[g] > 0){
 			idx[G++] = g;
 		}
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
         if(token != NULL){
             fprintf(stderr,"Error: too many fields on line number %d:\n%s\n",g,sc);
         }
@@ -541,7 +541,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
 void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, double &vmin, double &vmax, int &numbin, int &N_char){
 
     if (argc<2)
-        show_usage(argv[0]);
+        show_usage();
 
     int i;
 
@@ -551,7 +551,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 
     for(i=1;i<argc;i++){
         if (argv[i] == get_help[0] || argv[i] == get_help[1])
-            show_usage(argv[0]);
+            show_usage();
     }
 
 	string get_version [2];
@@ -582,7 +582,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
                 if ( idx+1 > argc-1 ){
                     cerr << "Error in argument parsing :\n"
                          << argv[i] << " option missing\n";
-                    show_usage(argv[0]);
+                    show_usage();
                 }
 				if(j==0) in_file = argv[idx+1];
 				if(j==1) out_folder = argv[idx+1];
@@ -599,8 +599,8 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
         }
         if (idx == 0 && j == 0){
         	cerr << "Error in argument parsing :\n"
-            << "missing input file name\n";
-			show_usage;
+            	 << "missing input file name\n";
+			show_usage();
         }
     }
 
@@ -623,9 +623,9 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 	N_char = 2*N_char;
 }
 
-static void show_usage(string name)
+static void show_usage(void)
 {
-    cerr << "Usage: " << name << " <option(s)> SOURCES\n"
+    cerr << "Usage: Sanity <option(s)> SOURCES\n"
          << "Options:\n"
          << "\t-h,--help\t\tShow this help message\n"
          << "\t-v,--version\t\tShow the current version\n"
