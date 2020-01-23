@@ -1,5 +1,7 @@
 clear all;
 
+%%%%% Get the raw dataset on Zenedo: https://zenodo.org/record/3597622#.Xim39HVKhKg %%%%s
+
 Datasets = {'Zeisel' 'Baron' 'Chen' 'LaManno_Embryo' 'LaManno_ES' 'LaManno_MouseEmbryo' 'SimulatedBaron','Gruen_ESC_SC_2i','Gruen_ESC_SC_serum','Gruen_ESC_RNA_2i','Gruen_ESC_RNA_serum','Gruen_ESC_SC_2i_serum'};
 
 My_norm = {'RawCounts','TPM','Sanity','SAVER','scImpute','MAGIC','scVI','DCA'};
