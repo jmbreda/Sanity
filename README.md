@@ -102,7 +102,7 @@ git clone https://github.com/jmbreda/Sanity.git
 	brew install gcc9
 	```
 	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Change the first line of `src/Makefile` from `CC=g++` to `CC=g++-9`
-* Move to the source code directory and compile
+* Move to the source code directory and compile. The compilation takes a few seconds.
 ```
 cd Sanity/src
 make
