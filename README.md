@@ -117,4 +117,4 @@ Sanity/bin/Sanity_macOS
 ```
 
 ## Help
-For any questions or assistance regarding Sanity, please contact us at jeremie.breda@unibas.ch
+For any questions or assistance regarding Sanity, please post your question the issues section or contact us at jeremie.breda@unibas.ch
