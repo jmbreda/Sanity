@@ -14,7 +14,7 @@ The scripts used for running the bechmarked normalization methods and for making
 
 ## Input
 
-* Count Matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values (`'path/to/text_file'`).
+* Count Matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values. (`'path/to/text_file'`)
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
@@ -22,9 +22,9 @@ The scripts used for running the bechmarked normalization methods and for making
 | Gene 2 | 2.0 | 6.0 | 1.0 |
 | ... | |
 
-* (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file (`'path/to/text_file.mtx'`).
-	* (optional) Gene ID file: *(N<sub>g</sub>)* (`'path/to/text_file'`)
-	* (optional) Cell ID file: *(N<sub>c</sub>)* (`'path/to/text_file'`)
+* (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Named `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
+	* (optional) Gene ID file: Named `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
+	* (optional) Cell ID file: Named `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * (optional) Destination folder (`'path/to/output/folder'`)
 * (optional) Number of threads (integer)
 * (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`)
