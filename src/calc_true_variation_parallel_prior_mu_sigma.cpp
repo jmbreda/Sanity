@@ -6,6 +6,7 @@
 #include <fstream>
 #include <omp.h>
 
+#include <ReadInputFiles.h>
 #include <FitFrac.h>
 #include <Digamma_Trigamma.h>
 
@@ -16,153 +17,64 @@ using namespace std;
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, double &vmin, double &vmax, int &numbin, int &N_char);
+void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char);
 static void show_usage(void);
 
 int main (int argc, char** argv){
 	
 	string in_file("");
+	string gene_name_file("none");
+	string cell_name_file("none");
+	string in_file_extension("");
 	string out_folder("");
 	int N_threads(4);
-	string extended_output("false");
+	bool print_extended_output(false);
 	double vmin = 0.01;
     double vmax = 20.0;
 	int numbin = 116;
 	int N_char;
-	parse_argv(argc, argv, in_file, out_folder, N_threads, extended_output, vmin, vmax, numbin, N_char);
+	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char);
 
-	bool print_extended_output(false);
-	if ( extended_output == "true" || extended_output == "1" )
-		print_extended_output = true;
+	// count Number of genes and cells
+	int G, C;
+	// Number of rows in file
+	int N_rows;
+	// Gene idx map for mtx
+	map<int,int> gene_idx;
 
-    int g, i, k;
-    int G_tmp, C;
-    char *ss = new char [N_char];
-	char *sc = new char [N_char];
-
-    FILE *infp; 
-    infp = (FILE *) fopen(in_file.c_str(),"r");
-    if(infp == NULL){
-        fprintf(stderr,"Cannot open input file %s\n",in_file.c_str());
-        exit(EXIT_FAILURE);
-    }
-
-    /***First line should have the names of the columns (sample names)***/
-    fgets(ss,N_char,infp);
-    strcpy(sc,ss);
-    char *token = strtok(ss," \t,");
-
-    C = 0;
-    while(token){
-        ++C;
-        token = strtok(NULL," \t,");
-    }
-    C = C-1;
-    printf("There were %d cells\n",C);
-
-    /***now go fill in the character names***/
-	string *cell_names = new string [C+1];
-    token = strtok(sc," \t,");
-    i=0;
-	int tmp;
-    while(token){
-		cell_names[i] = string(token);
-		tmp = cell_names[i].find('\n');
-		if (tmp > -1){
-			cell_names[i].erase(tmp,1);
-		}
-        ++i;
-        token = strtok(NULL," \t,");
-    }
-
-    G_tmp = 0;
-    while( fgets(ss,N_char,infp)){
-        ++G_tmp;
-    }
-    fclose(infp);
-    printf("There were %d rows\n",G_tmp);
-
-	// Count per gene and cell
-    double **n_c_tmp = new double *[G_tmp];
-    for(g=0;g<G_tmp;++g){
-        n_c_tmp[g] = new double [C];
+	if (in_file_extension == "mtx"){
+		Get_G_C_MTX(in_file, N_rows, G, C, gene_idx);
+		printf("There were %d rows\n", N_rows);
+	} else { 
+		Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, N_char);
+		printf("There were %d rows\n", N_rows);
 	}
-	//double *N_c = new double [C];
+	printf("There were %d genes and %d cells\n",G,C);
+
+	int g, c, k;
+	// Count per cell
 	double *N_c = new double [C];
-    for(i=0;i<C;++i){
-        N_c[i] = 0;
+    for(c=0;c<C;++c){
+        N_c[c] = 0;
     }
-
-	// Total Count per gene :
-	double *n_tmp = new double [G_tmp];
-    for(g=0;g<G_tmp;++g){
-        n_tmp[g] = 0;
-    }
-
-	// Get index of genes with counts bigger than 0
-	int *idx = new int [G_tmp];
-	int G(0);
-
-	string gene_names_tmp [G_tmp];
-    /**reopen file to read the counts***/
-    infp = (FILE *) fopen(in_file.c_str(),"r");
-    /***first line has names***/
-    fgets(ss,N_char,infp);
-    char *retval;
-    for(g=0; g<G_tmp; ++g){
-        retval = fgets(ss,N_char,infp);
-        if(retval == NULL){
-            fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
-            return (0);
-        }
-        /***cut the line based on spaces/tabs***/
-        strcpy(sc,ss);
-        token = strtok(ss," \t,");
-        gene_names_tmp[g] = token;
-		n_tmp[g] = 0;
-        for(i=0; i<C; ++i){
-            /****go to the next in the list of words****/
-            token = strtok(NULL," \t,");
-            if(token != NULL){
-                n_c_tmp[g][i] = atoi(token);
-				n_tmp[g] += n_c_tmp[g][i];/**total count this gene**/
-                N_c[i] += n_c_tmp[g][i];// total count for this cell
-            }else{
-                fprintf(stderr,"Error: not enough fields on line number %d:\n%s\n",g,sc);
-                return (0);
-            }
-        }
-		if (n_tmp[g] > 0){
-			idx[G++] = g;
-		}
-        token = strtok(NULL," \t,");
-        if(token != NULL){
-            fprintf(stderr,"Error: too many fields on line number %d:\n%s\n",g,sc);
-        }
-    }
-    fclose(infp);
-	delete[] ss;
-	delete[] sc;
-
-	// Now get  gene_names, n_c and n for expressed genes only
-    printf("There were %d genes expressed\n",G);
-
+	// Count per gene
+	double *n = new double [G];
+	// count per gene and per cell
     double **n_c = new double *[G];
     for(g=0;g<G;++g){
         n_c[g] = new double [C];
+		n[g] = 0;
 	}
-	double *n = new double [G];
-	string gene_names [G];
+	// Gene and cell names
+	string *gene_names = new string [G];
+	string *cell_names = new string [C];
 
-	for(g=0; g<G; ++g){
-		n[g] = n_tmp[idx[g]];
-		gene_names[g] = gene_names_tmp[idx[g]];
-		for(i=0; i<C; ++i){
-			n_c[g][i] = n_c_tmp[idx[g]][i];
-		}
+	// Read input file
+	if (in_file_extension == "mtx"){
+		ReadMTX(in_file, gene_name_file, cell_name_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, gene_idx);
+	} else {
+		ReadUMIcountMatrix(in_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, N_char);
 	}
-	delete[] n_tmp;
-	delete[] n_c_tmp;
 
 	// alpha and beta of gamma prior on mu
 	double a;
@@ -170,7 +82,7 @@ int main (int argc, char** argv){
 	a = 1.0;
 	b = 0.0;
 
-	// Compute output with best v
+    // Declare output variable
 	double *mu = new double [G];
 	double *var_mu = new double [G];
 	double *var_gene = new double [G];
@@ -180,17 +92,14 @@ int main (int argc, char** argv){
 		delta[g] = new double [C];
 		var_delta[g] = new double [C];
 	}
-
 	double v;
 	double deltav = log(vmax/vmin)/((double) numbin-1);
-    /*** Declare output variable Likelihood ***/
 	double **lik = new double *[G];
 	for(g=0;g<G;g++){
 		lik[g] = new double [numbin];
 		for(k=0;k<numbin;k++)
 			lik[g][k] = -1.0; 
 	}
-
 
    	// Get Loglikelihood :
 	cout << "Fit gene expression levels\n";
@@ -209,9 +118,9 @@ int main (int argc, char** argv){
 
 	out_exp_lev << "GeneID";
 	out_d_exp_lev << "GeneID";
-    for(i=1;i<C+1;i++){
-		out_exp_lev << "\t" << cell_names[i].c_str();
-		out_d_exp_lev << "\t" << cell_names[i].c_str();
+    for(c=0;c<C;c++){
+		out_exp_lev << "\t" << cell_names[c].c_str();
+		out_d_exp_lev << "\t" << cell_names[c].c_str();
 	}
 	out_exp_lev << "\n";
 	out_d_exp_lev << "\n";
@@ -219,9 +128,9 @@ int main (int argc, char** argv){
 	for(g=0;g<G;g++){
 	out_exp_lev << gene_names[g].c_str();
 	out_d_exp_lev << gene_names[g].c_str();
-		for(i=0;i<C;i++){
-			out_exp_lev << "\t" << mu[g] + delta[g][i];
-			out_d_exp_lev << "\t" << sqrt( var_mu[g] + var_delta[g][i] );
+		for(c=0;c<C;c++){
+			out_exp_lev << "\t" << mu[g] + delta[g][c];
+			out_d_exp_lev << "\t" << sqrt( var_mu[g] + var_delta[g][c] );
 		}
 		if ( g != G-1 ){
 			out_exp_lev << "\n";
@@ -297,8 +206,8 @@ int main (int argc, char** argv){
 
 
 		// output cell name
-		for(i=1;i<C+1;i++){
-			fprintf(out_cell,"%s\n",cell_names[i].c_str());
+		for(c=0;c<C;c++){
+			fprintf(out_cell,"%s\n",cell_names[c].c_str());
 		}
 		for(g=0; g<G; ++g){
 			// Write gene names
@@ -309,9 +218,9 @@ int main (int argc, char** argv){
 			fprintf(out_mu,"%lf\n",mu[g]);
 			fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
 			fprintf(out_var_gene,"%lf\n",var_gene[g]);
-			for(i=0;i<C-1;++i){
-				fprintf(out_delta,"%lf\t",delta[g][i]);
-				fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][i]));
+			for(c=0;c<C-1;++c){
+				fprintf(out_delta,"%lf\t",delta[g][c]);
+				fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][c]));
 			}
 			fprintf(out_delta,"%lf\n",delta[g][C-1]);
 			fprintf(out_ddelta,"%lf\n",sqrt(var_delta[g][C-1]));
@@ -538,7 +447,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
     return e*e;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &N_threads, string &extended_output, double &vmin, double &vmax, int &numbin, int &N_char){
+void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char){
 
     if (argc<2)
         show_usage();
@@ -564,17 +473,21 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 		}
 	}
 
-    string to_find[7][2] = {{"-f", "--file"},
+	int N_param(9);
+	string extended_output("false");
+    string to_find[9][2] = {{"-f", "--file"},
 							{"-d", "--destination"},
 							{"-n", "--n_threads"},
 							{"-e", "--extended_output"},
          					{"-vmin", "--variance_min"},
          					{"-vmax", "--variance_max"},
-					    	{"-nbin", "--number_of_variance_bins"}};
+					    	{"-nbin", "--number_of_variance_bins"},
+							{"-mtx_genes","--mtx_gene_name_file"},
+							{"-mtx_cells","--mtx_cell_name_file"}};
 
     int j;
     int idx;
-    for(j=0;j<7;j++){
+    for(j=0;j<N_param;j++){
         idx = 0;
         for(i=1;i<argc;i++){
             if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1]){
@@ -591,18 +504,27 @@ void parse_argv(int argc,char** argv, string &in_file, string &out_folder, int &
 				if(j==4) vmin = atof(argv[idx+1]);
 				if(j==5) vmax = atof(argv[idx+1]);
 				if(j==6) numbin = atoi(argv[idx+1]);
+				if(j==7) gene_name_file = argv[idx+1];
+				if(j==8) cell_name_file = argv[idx+1];
 
 				// add '/' to out_folder if not already
 				if( j == 1 && out_folder.back() != '/' )
 					out_folder = out_folder + '/';
             }
         }
-        if (idx == 0 && j == 0){
+		if (idx == 0 && j == 0){
         	cerr << "Error in argument parsing :\n"
-            	 << "missing input file name\n";
+            << "missing input file name\n";
 			show_usage();
         }
     }
+
+	if ( extended_output == "true" || extended_output == "1" )
+		print_extended_output = true;
+
+	// Get input file extension
+	in_file_extension = in_file.substr(in_file.find(".")+1,in_file.length());
+	cout << "File type : " << in_file_extension << "\n";
 
 	// Get number of Character in first row, for iobuffer
 	string command = "head -1 " + in_file + "|wc -c>" + out_folder + "tmp";
@@ -635,6 +557,9 @@ static void show_usage(void)
          << "\t-e,--extended_output\tOption to print extended output (default: false)\n"
          << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.01)\n"
          << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 20)\n"
-         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 116)\n";
+         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 116)\n"
+		 << "\t-mtx_genes,--mtx_gene_name_file\tFile with gene names (only needed if mtx file)\n"
+		 << "\t-mtx_cells,--mtx_cell_name_file\tFile with cell names (only needed if mtx file)\n";
+
     exit(0);
 }
