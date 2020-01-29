@@ -269,7 +269,7 @@ void ReadMTX(string mtx_file, string gene_name_file, string cell_name_file, doub
 			}
 		}
 	}else{
-		fprintf(stderr,"No gene name file\n");
+		fprintf(stdout,"No gene name file\n");
 		for(g=0;g<G;g++)
 			gene_names[g] = "Gene_" + to_string(g);
 	}
@@ -296,7 +296,7 @@ void ReadMTX(string mtx_file, string gene_name_file, string cell_name_file, doub
 			}
 		}
 	}else{
-		fprintf(stderr,"No cell name file\n");
+		fprintf(stdout,"No cell name file\n");
 		for(c=0;c<C;c++)
 			cell_names[c] = "Cell_" + to_string(c);
 	}

@@ -551,15 +551,14 @@ static void show_usage(void)
          << "Options:\n"
          << "\t-h,--help\t\tShow this help message\n"
          << "\t-v,--version\t\tShow the current version\n"
-         << "\t-f,--file\t\tSpecify the input transcript count text file\n"
+         << "\t-f,--file\t\tSpecify the input transcript count text file (.mtx for Matrix Market File Format)\n"
+		 << "\t-mtx_genes,--mtx_gene_name_file\tSpecify the gene name text file (only needed if .mtx input file)\n"
+		 << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
          << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
          << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
          << "\t-e,--extended_output\tOption to print extended output (default: false)\n"
          << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.01)\n"
          << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 20)\n"
-         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 116)\n"
-		 << "\t-mtx_genes,--mtx_gene_name_file\tFile with gene names (only needed if mtx file)\n"
-		 << "\t-mtx_cells,--mtx_cell_name_file\tFile with cell names (only needed if mtx file)\n";
-
+         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 116)\n";
     exit(0);
 }
