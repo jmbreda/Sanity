@@ -14,7 +14,7 @@ The scripts used for running the bechmarked normalization methods and for making
 
 ## Input
 
-* Count Matrix : *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. tsv or csv format.
+* Count Matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values (`'path/to/text_file'`).
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
@@ -22,6 +22,9 @@ The scripts used for running the bechmarked normalization methods and for making
 | Gene 2 | 2.0 | 6.0 | 1.0 |
 | ... | |
 
+* (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file (`'path/to/text_file.mtx'`).
+	* (optional) Gene ID file: *(N<sub>g</sub>)* (`'path/to/text_file'`)
+	* (optional) Cell ID file: *(N<sub>c</sub>)* (`'path/to/text_file'`)
 * (optional) Destination folder (`'path/to/output/folder'`)
 * (optional) Number of threads (integer)
 * (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`)
@@ -29,7 +32,7 @@ The scripts used for running the bechmarked normalization methods and for making
 * (optional) Number of bins for the variance in log transcription quotients (integer)
 ## Output
 
-* log_transcription_quotients.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
+* log_transcription_quotients.txt: *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -67,7 +70,9 @@ The scripts used for running the bechmarked normalization methods and for making
   Options:
 	-h,--help		Show this help message
 	-v,--version		Show the current version
-	-f,--file		Specify the input transcript count text file
+	-f,--file		Specify the input transcript count text file (.mtx for Matrix Market File Format)
+	-mtx_genes,--mtx_gene_name_file	Specify the gene name text file (only needed if .mtx input file)
+        -mtx_cells,--mtx_cell_name_file	Specify the cell name text file (only needed if .mtx input file)
 	-d,--destination	Specify the destination path (default: pwd)
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
 	-e,--extended_output	Option to print extended output (default: false)
