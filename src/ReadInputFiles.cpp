@@ -208,6 +208,7 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int,int> &gene
 		expressed_genes[g] = 0;
 	
 	// Read following rows rest of
+    G=0;
     while ( (retval = fgets(ss,1024,infp) ) != NULL) {
 		// Read values gene idx and add as expressed
 		token = strtok(retval," \t");
