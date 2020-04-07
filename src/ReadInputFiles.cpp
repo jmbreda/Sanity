@@ -18,10 +18,10 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
     C = 0;
     fgets(ss,N_char,infp);
     strcpy(sc,ss);
-    char *token = strtok(ss," \t");
+    char *token = strtok(ss," \t,");
     while(token){
         ++C;
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
     }
     C = C-1;
 
@@ -47,13 +47,13 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
             fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
             exit(EXIT_FAILURE);
         }
-        /***cut the line based on spaces/tabs***/
+        /***cut the line based on spaces/tabs/,***/
         strcpy(sc,ss);
-        token = strtok(ss," \t");
+        token = strtok(ss," \t,");
         n = 0;
         for(c=0; c<C; ++c){
             /****go to the next in the list of words****/
-            token = strtok(NULL," \t");
+            token = strtok(NULL," \t,");
             if(token != NULL){
                 n += atoi(token);/**total count this gene**/
             }else{
@@ -65,7 +65,7 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
         if (n > 0){
             G++;
         }
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
         if(token != NULL){
             fprintf(stderr,"Error: too many fields on line number %d:\n%s\n",g,sc);
         }
@@ -95,9 +95,9 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
     fgets(ss,N_char,infp);
 
     /***now go fill in the cell names***/
-	char *token = strtok(ss," \t");
+	char *token = strtok(ss," \t,");
 	// Ignore first word
-    token = strtok(NULL," \t");
+    token = strtok(NULL," \t,");
     c=0;
     int tmp;
     while(token){
@@ -107,7 +107,7 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
             cell_names[c].erase(tmp,1);
         }
         ++c;
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
     }
 
 	
@@ -133,13 +133,13 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
         }
         /***cut the line based on spaces/tabs***/
         strcpy(sc,ss);
-        token = strtok(ss," \t");
+        token = strtok(ss," \t,");
 
         gene_names_tmp = token;
         n_tmp = 0;
         for(c=0; c<C; ++c){
             /****go to the next in the list of words****/
-            token = strtok(NULL," \t");
+            token = strtok(NULL," \t,");
             if(token != NULL){
                 n_c_tmp[c] = atoi(token);
                 n_tmp += n_c_tmp[c];// total count this gene
@@ -157,7 +157,7 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
 				n_c[g][c] = n_c_tmp[c];
 			g++;
         }
-        token = strtok(NULL," \t");
+        token = strtok(NULL," \t,");
         if(token != NULL){
             fprintf(stderr,"Error: too many fields on line number %d:\n%s\n",g,sc);
         }
