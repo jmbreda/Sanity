@@ -142,7 +142,7 @@ int main (int argc, char** argv){
 
 	if ( print_extended_output ){
 		
-		// Compute variance	
+		// Compute variance : \int v*p(v) dv
         for(g=0; g<G; ++g){
 			var_gene[g] = 0.0;
 			for(k=0;k<numbin;++k){
