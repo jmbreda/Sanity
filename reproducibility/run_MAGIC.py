@@ -26,4 +26,4 @@ X_magic = magic_op.fit_transform(X,genes='all_genes')
 X_magic = X_magic.T
 
 # Write output matrix
-X_magic.to_csv(outdir + '/magic_normalization.txt',sep='\t')
+X_magic.to_csv(outdir + '/MAGIC_normalization.txt',sep='\t')

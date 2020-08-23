@@ -19,6 +19,13 @@ FukushimaLambertW.o: FukushimaLambertW.cc FukushimaLambertW.h
 Digamma_Trigamma.o: Digamma_Trigamma.cpp Digamma_Trigamma.h
 	$(CC) $(CFLAGS) -c Digamma_Trigamma.cpp
 
+
+Sanity_distance: compute_distance.o
+	$(CC) $(CFLAGS) -o ../bin/Sanity_distance compute_distance.o
+
+compute_distance.o: compute_distance.cpp
+	$(CC) $(CFLAGS) -c compute_distance.cpp
+
 clean:
 	rm -f *.o
 

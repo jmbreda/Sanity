@@ -2,16 +2,16 @@ clear all;
 
 %%%%% Get the raw dataset on Zenedo: https://zenodo.org/record/3597622#.Xim39HVKhKg %%%%s
 
-Datasets = {'Zeisel' 'Baron' 'Chen' 'LaManno_Embryo' 'LaManno_ES' 'LaManno_MouseEmbryo' 'SimulatedBaron','Gruen_ESC_SC_2i','Gruen_ESC_SC_serum','Gruen_ESC_RNA_2i','Gruen_ESC_RNA_serum','Gruen_ESC_SC_2i_serum'};
+Datasets = {'Gruen_ESC_SC_2i','Gruen_ESC_SC_serum','Gruen_ESC_RNA_2i','Gruen_ESC_RNA_serum','Zeisel' 'Baron' 'Chen' 'LaManno_Embryo' 'LaManno_ES' 'LaManno_MouseEmbryo' 'Simulated_Baron_Independent_Genes','Simulated_Branched_Random_Walk'};
 
-My_norm = {'RawCounts','TPM','Sanity','SAVER','scImpute','MAGIC','scVI','DCA'};
+My_norm = {'RawCounts','TPM','DCA','Deconvolution','MAGIC','Sanity','SAVER','scImpute','sctransform','scVI'};
 
 % Get linear expression from different normalizations
 for d = Datasets
-	for my_norm = My_norm
+	for my_norm = setdiff(My_norm,'sctransform');
 
 		% Read input table
-		if strcmp(d{:},'RawCounts') || strcmp(d{:},'TPM') 
+		if strcmp(my_norm{:},'Deconvolution')
 			in_file = ['data/' d{:} '_UMI_counts.txt'];
 		else
 			in_file = ['data/' d{:} '_' my_norm{:} '_normalization.txt'];
@@ -24,13 +24,14 @@ for d = Datasets
 		% Get linear expression from different normalizations
 		switch my_norm{:}
 		case 'RawCounts'
-			M = T{:,:};
+			M = exp(T{:,:})-1;
 		case 'TPM'
-			M = T{:,:};
-			Count_per_cell = sum(M,1);
-			M = bsxfun(@rdivide,M,Count_per_cell)*median(Count_per_cell);
+			M = exp(T{:,:})-1;
 		case 'DCA'
 			M = T{:,:};
+		case 'Deconvolution'
+			sizeFactor = readtable(['data/' d{:} '_' my_norm{:} '_normalization.txt'])';
+			M = T{:,:}./sizeFactor{:,:};
 		case 'MAGIC'
 			M = T{:,:};
 		case 'Sanity'
@@ -53,7 +54,7 @@ for d = Datasets
 	for my_norm = My_norm
 
 		% Read input table
-		if strcmp(d{:},'RawCounts') || strcmp(d{:},'TPM') 
+		if strcmp(d{:},'Deconvolution')
 			in_file = ['data/' d{:} '_UMI_counts.txt'];
 		else
 			in_file = ['data/' d{:} '_' my_norm{:} '_normalization.txt'];
@@ -66,13 +67,14 @@ for d = Datasets
 		% Get log expression from different normalizations
 		switch my_norm{:}
 		case 'RawCounts'
-			M = log(T{:,:}+1);
+			M = T{:,:};
 		case 'TPM'
 			M = T{:,:};
-			Count_per_cell = sum(M,1);
-			M = log( bsxfun(@rdivide,M,Count_per_cell)*median(Count_per_cell) + 1 );
 		case 'DCA'
 			M = log(T{:,:});
+		case 'Deconvolution'
+			sizeFactor = readtable(['data/' d{:} '_' my_norm{:} '_normalization.txt'])';
+			M = log(T{:,:}./sizeFactor{:,:}+1);
 		case 'MAGIC'
 			M = T{:,:};
 			M = max(0,M);
@@ -88,6 +90,8 @@ for d = Datasets
 			M = log(T{:,:});
 		case 'scImpute'
 			M = log(T{:,:}+1);
+		case 'sctransform'
+			M = T{:,:};
 		case 'scVI'
 			M = log(T{:,:});
 		end

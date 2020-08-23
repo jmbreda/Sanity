@@ -10,7 +10,7 @@
 #include <FitFrac.h>
 #include <Digamma_Trigamma.h>
 
-string VERSION("1.0");
+string VERSION("1.1");
 
 using namespace std;
 
@@ -29,9 +29,9 @@ int main (int argc, char** argv){
 	string out_folder("");
 	int N_threads(4);
 	bool print_extended_output(false);
-	double vmin = 0.01;
-    double vmax = 20.0;
-	int numbin = 116;
+	double vmin = 0.001;
+    double vmax = 50.0;
+	int numbin = 160;
 	int N_char;
 	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char);
 
