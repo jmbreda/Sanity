@@ -124,9 +124,9 @@ Sanity/bin/Sanity_macOS
 ## Sanity_distance
 Compute cell-cell distances from Sanity output files. Needs extended outputs of Sanity (`-e 1` option).
 ### Input
-* The output folder of the Sanity run, specifiied by the `-d` in Sanity (`'path/to/folder'`)
-* (optional) The gene signal to noise ratio used as a cut-off (double, default: `1.0`)
-* (optional) Compute distance with or without errorbars (boolean, default: `1` or `true`)
+* The output folder of the Sanity run, specifiied with the `-d` option in Sanity (`'path/to/folder'`)
+* (optional) The gene signal to noise ratio used as gene cut-off (double, default: `1.0`)
+* (optional) Compute distances with or without errorbars (boolean, default: `1` or `true`)
 * (optional) Number of threads (integer, default: `4`)
 ### Output
 * Cell-cell distance: *(N<sub>c</sub>(N<sub>c</sub>-1)/2)* vector of cell to cell distances *dist(cell<sub>i</sub>,cell<sub>j</sub>), i=1,...,N<sub>c</sub>-1, j=i+1,...,N<sub>c</sub>*, with *N<sub>c</sub>* the number of cells. 
