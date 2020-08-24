@@ -557,8 +557,8 @@ static void show_usage(void)
          << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
          << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
          << "\t-e,--extended_output\tOption to print extended output (default: false)\n"
-         << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.01)\n"
-         << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 20)\n"
-         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 116)\n";
+         << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
+         << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
+         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n";
     exit(0);
 }
