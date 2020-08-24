@@ -25,11 +25,11 @@ The scripts used for running the bechmarked normalization methods and for making
 * (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Named `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
 	* (optional) Gene ID file: Named `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
 	* (optional) Cell ID file: Named `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
-* (optional) Destination folder (`'path/to/output/folder'`)
-* (optional) Number of threads (integer)
-* (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`)
-* (optional) Minimal and maximal considered values of the variance in log transcription quotients (double)
-* (optional) Number of bins for the variance in log transcription quotients (integer)
+* (optional) Destination folder (`'path/to/output/folder'`, default: `pwd`)
+* (optional) Number of threads (integer, default: `4`)
+* (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `4`)
+* (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
+* (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 ## Output
 
 * log_transcription_quotients.txt: *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
@@ -76,9 +76,9 @@ The scripts used for running the bechmarked normalization methods and for making
 	-d,--destination	Specify the destination path (default: pwd)
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
 	-e,--extended_output	Option to print extended output (default: false)
-	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.01)
-	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 20)
-	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 116)
+	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.001)
+	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 50)
+	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 160)
 ```
 
 ## Installation
@@ -107,7 +107,7 @@ git clone https://github.com/jmbreda/Sanity.git
 	brew install gcc9
 	```
 	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Change the first line of `src/Makefile` from `CC=g++` to `CC=g++-9`
-* Move to the source code directory and compile. The compilation takes a few seconds.
+* Move to the source code directory and compile.
 ```
 cd Sanity/src
 make
@@ -121,5 +121,47 @@ Sanity/bin/Sanity
 Sanity/bin/Sanity_macOS
 ```
 
+## Sanity_distance
+Compute cell-cell distances from Sanity output files. Needs extended outputs of Sanity (`-e 1` option).
+### Input
+* The output folder of the Sanity run, specifiied by the `-d` in Sanity (`'path/to/folder'`)
+* (optional) The gene signal to noise ratio used as a cut-off (double, default: `1.0`)
+* (optional) Compute distance with or without errorbars (boolean, default: `1` or `true`)
+* (optional) Number of threads (integer, default: `4`)
+### Output
+* Cell-cell distance: *(N<sub>c</sub>(N<sub>c</sub>-1)/2)* vector of cell to cell distances *dist(cell<sub>i</sub>,cell<sub>j</sub>), i=1,...,N<sub>c</sub>-1, j=i+1,...,N<sub>c</sub>*, with *N<sub>c</sub>* the number of cells. 
+  ||
+  |:------:|
+  |*dist(cell<sub>1</sub>,cell<sub>2</sub>)*|
+  |*dist(cell<sub>1</sub>,cell<sub>3</sub>)*|
+  |*dist(cell<sub>1</sub>,cell<sub>4</sub>)*|
+  |...|
+  |*dist(cell<sub>N<sub>c</sub>-2</sub>,cell<sub>N<sub>c</sub>-1</sub>)*|
+  |*dist(cell<sub>N<sub>c</sub>-2</sub>,cell<sub>N<sub>c</sub></sub>)*|
+  |*dist(cell<sub>N<sub>c</sub>-1</sub>,cell<sub>N<sub>c</sub></sub>)*|
+located in the Sanity output folder (specified with `-f` option), named `cell_cell_distance_[...].txt`, depending on the `-err` and `-s2n` options.
+### Usage
+```
+./Sanity_distance <option(s)> SOURCES
+Options:
+	-h,--help		Show this help message
+	-v,--version		Show the current version
+	-f,--folder		Specify the input folder with extended output from Sanity
+	-s2n,--signal_to_noise_cutoff	Minimal signal/noise of genes to include in the distance calculation (default: 1.0)
+	-err,--with_error_bars	Compute cell-cell distance taking the errobar epsilon into account (default: true)
+	-n,--n_threads		Specify the number of threads to be used (default: 4)
+```
+### Instalation
+Same dependencies as Sanity (see above).
+
+* Move to the source code directory and compile.
+```
+cd Sanity/src
+make Sanity_distance
+```
+* The binary file is located in
+```
+Sanity/bin/Sanity_distance
+```
 ## Help
 For any questions or assistance regarding Sanity, please post your question the issues section or contact us at jeremie.breda@unibas.ch
