@@ -1,218 +1,76 @@
-clear all; close all;
+clear all; close all; clc;
 
 addpath('scripts')
 
-% define colors
-my_colors = flipud(cbrewer('div','RdBu',513));
-my_grey = .2*ones(1,3);
+My_norm = {'True','RawCounts','TPM','DCA','MAGIC','Sanity','SAVER','scImpute','scVI'};
+dataset = 'Simulated_Baron_Independent_Genes';
 
-
-% Compare the gene pairwise correlation of two methods (Panels D,H)
-
-norm_1 = 'Sanity';
-
-% Get gene pairwise correlation
-load(['data/Baron_' norm_1 '_normalization.mat'])
-rho{1} = corr(M');
-c{1} = rho{1} - 3*tril(ones(size(rho{1})));
-c{1} = c{1}(c{1}>=-1);
-
-for norm_2 = {'RawCounts' 'scImpute'}
-	% Get gene pairwise correlation
-	load(['data/Baron_' norm_2{:} '_normalization.mat'])
-	rho{2} = corr(M');
-	c{2} = rho{2} - 3*tril(ones(size(rho{1})));
-	c{2} = c{2}(c{2}>=-1);
-
-	% Get 3d histogram
-	Edges = [-1.005:0.01:1.005]';
-	[H X] = hist3([c{2} c{1}],'Edges',{Edges Edges});
-
-	figure('visible','off')
-	imagesc(X{2},X{1},log10(H),'AlphaData',~(H==0))
-	my_map = cbrewer('seq','Blues',256);
-	colormap(my_map(64:end,:))
-	axis xy;
-	hcb = colorbar;
-	my_ticks = 0:floor( max(max(log10(H))) );
-	for i = 1:length(my_ticks)
-		my_ticklabels{i} = ['10^' num2str(my_ticks(i))];
-	end
-	set(hcb,'Ticks',my_ticks,'TickLabels',my_ticklabels);
-	set(get(hcb,'Title') ,'String','nb. of gene pairs');
-
-	hold on;
-	plot([-1 0; 1 0],[0 -1; 0 1],'r:')
-
-	axis([-1 1 -1 1])
-	xlabel([norm_1 ' gene pairwise correlation'])
-	ylabel([norm_2{:} ' gene pairwise correlation'])
-
-	dim = [12 9];
-	set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto','PaperPosition',[0 0 dim],'PaperSize',[dim]);
-	print(gcf,['Fig/figure_S3_' norm_1 '_' norm_2{:}],'-dpdf');
-end
-
-
-
-% Compare the gene pairwise correlation for high disagreements (Panels A-C,E-G,I-K)
-
-% Get UMI Counts
-T = readtable(['data/Baron_UMI_counts.txt'],'ReadRowNames',1,'delimiter', '\t');
-UMI_counts = T{:,:};
-[N_gene,N_cell] = size(UMI_counts);
-
-norm_1 = 'Sanity';
-
-% Get gene pairwise correlation
-load(['data/Baron_' norm_1 '_normalization.mat'])
-rho{1} = corr(M');
-clear c;
-c{1} = rho{1} - 3*tril(ones(size(rho{1})));
-c{1} = c{1}(c{1}>=-1);
-
-for norm_2 = {'TPM' 'DCA' 'SAVER'}
-	switch norm_2{:}
-	case 'TPM'
-		th_norm_2{1} = [.65 .85];
-		th_norm_2{2} = [0.13 .35];
-		th_norm_1{1} = [0.19 .35];
-		th_norm_1{2} = [.65 .89];
-	case 'DCA'
-		th_norm_2{1} = [.97 1.0];
-		th_norm_2{2} = [0 .3];
-		th_norm_1{1} = [-0.05 .005];
-		th_norm_1{2} = [.55 .75]; 
-	case 'SAVER'
-		th_norm_2{1} = [.88 .97];
-		th_norm_2{2} = [0 .3];
-		th_norm_1{1} = [-.05 .005];
-		th_norm_1{2} = [.7 .89]; 
-	end
-
-	% Get gene pairwise correlation
-	load(['data/Baron_' norm_2{:} '_normalization.mat'])
-	rho{2} = corr(M');
-	c{2} = rho{2} - 3*tril(ones(size(rho{1})));
-	c{2} = c{2}(c{2}>=-1);
-
-	% Get 3d histogram
-	Edges = [-1.005:0.01:1.005]';
-	[H X] = hist3([c{2} c{1}],'Edges',{Edges Edges});
-
-	figure('visible','off')
-	imagesc(X{2},X{1},log10(H),'AlphaData',~(H==0))
-	my_map = cbrewer('seq','Blues',256); 
-	colormap(my_map(64:end,:))
-	axis xy;
-	hcb = colorbar;
-	my_ticks = 0:floor( max(max(log10(H))) );
-	for i = 1:length(my_ticks)
-		my_ticklabels{i} = ['10^' num2str(my_ticks(i))];
-	end
-	set(hcb,'Ticks',my_ticks,'TickLabels',my_ticklabels);
-	set(get(hcb,'Title') ,'String','nb. of gene pairs');
-	axis([-1 1 -1 1])
-	hold on;
-	plot(th_norm_1{1}([1 2 2 1 1]),th_norm_2{1}([1 1 2 2 1]),'r-');
-	plot(th_norm_1{2}([1 2 2 1 1]),th_norm_2{2}([1 1 2 2 1]),'m-');
-	xlabel([norm_1 ' gene pairwise correlation'])
-	ylabel([norm_2{:} ' gene pairwise correlation'])
-	dim = [12 9];
-	set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto','PaperPosition',[0 0 dim],'PaperSize',[dim]);
-	print(gcf,['Fig/figure_S3_' norm_1 '_' norm_2{:}],'-dpdf');
-
-	for k=1:2
-		close all;
-		my_map = [];
-
-		% Get index satisfying 
-		[i,j] = find( rho{2}>th_norm_2{k}(1) & rho{2}<th_norm_2{k}(2) & rho{1}>th_norm_1{k}(1) & rho{1}<th_norm_1{k}(2) );
-
-		% Remove duplicates
-		tmp = sort([i j]')';
-		[i,idx]  = sort(tmp(:,1));
-		j = tmp(idx,2);
-		tmp = unique([i j],'rows');
-		i = tmp(:,1);
-		j = tmp(:,2);
-
-		% sort pair of genes : first lower max count (line)
-		for g = 1:length(i)
-			if max(UMI_counts(i(g),:)) > max(UMI_counts(j(g),:))
-				tmp = i(g);
-				i(g) = j(g);
-				j(g) = tmp;
-			end
-		end
-
-		% Fill 3d-hist;
-		H_count = [];
-		for g = 1:length(i)
-			for l = 1:N_cell
-				c_i = UMI_counts(i(g),l)+1;
-				c_j = UMI_counts(j(g),l)+1;
-				if c_i > size(H_count,1) || c_j > size(H_count,2)
-					H_count(c_i,c_j) = 1;
-				else
-					H_count(c_i,c_j) =  H_count(c_i,c_j) + 1;
-				end
-			end
-		end
-		
-		H_count(11,:) = sum(H_count(11:end,:),1);
-		H_count(12:end,:) = [];
-
-		H_count(:,31) = sum(H_count(:,31:end),2);
-		H_count(:,32:end) = [];
-
-		figure('visible','off')
-		imagesc(0:(size(H_count,2)-1),0:(size(H_count,1)-1),log10(H_count),'AlphaData',~(H_count==0));
-		axis xy;
-		if k==2
-			my_map = cbrewer('seq','Purples',256);
-			my_map(:,1) = my_map(:,3);
-
-			tmp = cbrewer('div','PiYG',512);
-			my_map = flipud( tmp(1:256,:) );
-		else
-			my_map = cbrewer('seq','Reds',256);
-		end
-		colormap(my_map(64:end,:))
-		hcb = colorbar;
-		my_ticks = 0:2:floor( max(max(log10(H_count))) );
-		for t = 1:length(my_ticks) 
-			my_ticklabels{t} = ['10^' num2str(my_ticks(t))];
-		end
-		set(hcb,'Ticks',my_ticks,'TickLabels',my_ticklabels);
-		set(get(hcb,'Title') ,'String','nb. of cells');
-		
-		xtick = 0:5:30;
-		xticklabels = {'0','5','10','15' '20','25','30'};
-		if max(max(UMI_counts(unique(j),:))) > 30
-			xticklabels{end} = '30+';
-		end
-		ytick = 0:5:10;
-		yticklabels = {'0','5','10'};	
-		if max(max(UMI_counts(unique(i),:))) > 10
-			yticklabels{end} = '10+';
-		end
-
-		set(gca,'XTick',xtick,'YTick',ytick,'XTickLabel',xticklabels,'YTickLabel',yticklabels);
-		xlim([-.5 30.5])
-		ylim([-.5 10.5]);
-
-		xlabel('Count gene i')
-		ylabel('Count gene j')
-		if k==1
-			title(['\color{red}' num2str(length(i)) ' pair of genes'])
-		else
-			title(['\color{magenta}' num2str(length(i)) ' pair of genes'])
-		end
-
-		dim = [12 4.5];
-		set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto','PaperPosition',[0 0 dim],'PaperSize',[dim]);
-		print(gcf,['Fig/figure_S3_count_hist_' norm_1 '_' norm_2{:} '_' num2str(k)],'-dpdf');
+for n = 1:length(My_norm)
+	if n==1
+		% Need to run run_Simulations.m to create data/Simulated_Baron_Independent_Genes.mat
+		load(['data/' dataset '.mat']);
+		my_mean(:,n) = mean(exp(E),2);
+		my_cv(:,n) = std(exp(E),0,2)./my_mean(:,n);
+	
+		% Compute mean UMI count per cell
+		mean_UMI = mean(UMI,2);
+	else
+		% Load gene expression and compute mean and cv
+		load(['data/' dataset '_' My_norm{n} '_normalization_lin.mat']);
+		M(isinf(M))=NaN;
+		M(M<0) = 0;
+		my_mean(:,n) = nanmean(M,2);
+		my_cv(:,n) =  nanstd(M,0,2)./my_mean(:,n);
 	end
 end
+
+% CV-CV scatter
+figure('visible','off');
+for n = 2:length(My_norm)
+
+	subplot(3,3,n-1);
+	x = [.004 230];
+	plot(x,x,'color',[.5 .5 .5]);
+	hold on;
+	scatter(my_cv(:,1),my_cv(:,n),1,log10(mean_UMI),'.');
+	set(gca,'xscale','log','yscale','log');
+	grid on;	
+	title([My_norm{n} ' Corr: ' num2str(corr(my_cv(:,1),my_cv(:,n)),2)],'FontWeight','Normal')
+	axis([.002 230 .002 230])
+	ticks = logspace(-2,2,5);
+	ticklabels = {'0.01' '0.1' '1' '10' '100'};
+	set(gca,'XMinorGrid','off','YMinorGrid','off')
+	set(gca,'ytick',ticks,'yticklabel',ticklabels,'xtick',ticks,'xticklabel',ticklabels);
+
+	if mod(n-1,3)~=1
+		set(gca,'yticklabel',[]);
+	end
+	if n-1<7
+		set(gca,'xticklabel',[]);
+	end
+	if n-1==4
+		ylabel('Inferred CV')
+	end
+	if n-1==8
+		xlabel('True CV')
+	end
+end
+dim = [16 15];
+set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto',...
+'PaperPosition',[0 0 dim],'PaperSize',[dim])
+print(gcf,['Fig/figure_S3','-r1000','-dpng');
+
+% Plot colorbar
+figure;
+sort_mean = sort(mean_UMI);
+scatter(sort_mean([1:10 end]),sort_mean([1:10 end]),1,sort_mean([1:10 end]),'.')
+hcb = colorbar;
+set(get(hcb,'Title') ,'String','<UMI> per cell');
+hcb.Ruler.Scale = 'log';
+hcb.Ruler.TickValues = [.001 .01 0.1 1 10 100 1000];
+
+dim = [12 5];
+set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto',...
+'PaperPosition',[0 0 dim],'PaperSize',[dim])
+print(gcf,'Fig/figure_S3_colorbar','-dsvg');
 

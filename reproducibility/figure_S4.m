@@ -2,70 +2,69 @@ clear all; close all;
 
 addpath('scripts')
 
-Datasets = {'Zeisel' 'Baron' 'Chen' 'LaManno_Embryo' 'LaManno_ES' 'LaManno_MouseEmbryo' 'SimulatedBaron'};
-My_norm = {'RawCounts','TPM','DCA','MAGIC','Sanity','SAVER','scImpute','scVI'};
+My_norm = {'RawCounts','TPM','DCA','Deconvolution','MAGIC','Sanity','SAVER','scImpute','sctransform',     'scVI'};
+Subplot_cols = length(My_norm)+1;
 
 % define colors
-my_colors = cbrewer('qual','Set1',length(My_norm));
-tmp_colors = cbrewer('qual','Dark2',8);
-my_colors(6,:) = mean([my_colors(6,:); tmp_colors(6,:)]);
-my_colors = my_colors;
-set(groot,'defaultAxesColorOrder',my_colors)
+tmp_colors = load('data/my_colors.txt');
+for ii = 1:length(My_norm)
+	my_colors{ii} = tmp_colors(ii,:);
+end
 
-% Plot distribution of pairwise correlation
+Datasets = {'Zeisel' 'Baron' 'Chen' 'LaManno_Embryo' 'LaManno_ES' 'LaManno_MouseEmbryo' 'Simulated_Baron_Independent_Genes'};
+Datasets_name = {'Zeisel' 'Baron' 'Chen' 'LaManno Embryo' 'LaManno ES' 'LaManno MouseEmbryo' 'Simulated'};
+
 figure('visible','off')
-for k = 1:length(Datasets)
+for d = 1:length(Datasets)
+
+	% Add "true" if simulated dataset
+	sim = strcmp(Datasets{d},'Simulated_Baron_Independent_Genes');
+	if sim
+		My_norm = ['True' My_norm];
+	end
+
+	% Get total UMI count per cell
+	T = readtable(['data/' Datasets{d} '_UMI_counts.txt'],'ReadRowNames',1,'delimiter','\t');
+	UMI_per_cell = sum(T{:,:},1)';
+
+    % Mesure correlation on various normalisations
+    C = nan(size(UMI_per_cell,1),length(My_norm));
+    for n = 1:length(My_norm)
+		if sim & n==1
+			load(['data/Simulated_Baron_Independent_Genes.mat']);
+			C(:,n) = corr(E',log(UMI_per_cell));
+		else
+			load(['data/' Datasets{d} '_' My_norm{n} '_normalization.mat'])
+			C(:,n) = corr(M',log(UMI_per_cell));
+		end
+    end
+
+	% Get subplot indices
+	if sim
+		idx_subplot = Subplot_cols*(d-1)+1:d*Subplot_cols;
+	else
+		idx_subplot = Subplot_cols*(d-1)+2:d*Subplot_cols;
+	end
+	subplot(length(Datasets),Subplot_cols,idx_subplot)
 	
-	H = [];
-	X = [];
-	for n = 1:length(My_norm);
-		% Compute gene pairwise correlation
-		load(['data/' Datasets{k} '_' My_norm{n} '_normalization.mat']);
-		C = corr(M');
-
-		% Get distribution
-		idx = find( triu(ones(size(C)),1) );
-		[h,x] = hist(C(idx),200);
-		save(out_file,'h','x');
-		H(:,n) = h';
-		X(:,n) = x';
-	end
-
-	% Normalize distribution
-	D = bsxfun(@rdivide,H,sum(H,1));
-
-	% Plot distribution 
-	subplot(3,3,k);
-	semilogy(X,D,'linewidth',1.5);
-	if k>3
-		xlabel('\rho')
+	% plot violin distributions
+	if sim
+		distributionPlot(C,'color',[[0 0 0] my_colors],'showMM',0,'globalNorm',1,'distWidth',1);
 	else
-		set(gca,'XtickLabel',[]);
+		distributionPlot(C,'color',my_colors,'showMM',0,'globalNorm',1,'distWidth',1);
 	end
-	if mod(k-1,3)==0
-		ylabel('density')
-		set(gca,'Ytick',[1e-8 1e-6 1e-4 1e-2 1e0])
-	else
-		set(gca,'YtickLabel',[]);
+	axis([0.5 length(My_norm)+.5 -1 1])
+	grid on
+	if d < length(Datasets)
+		set(gca,'Xtick',1:length(My_norm),'XTickLabel',[])
 	end
-	title(Datasets{k},'FontWeight','normal')
-	axis([-1 1 1e-6 1])
+	if d==4
+		set(get(gca,'Ylabel'),'String','Correlation between gene log expression and log(total UMI count per cell)')
+	end
+	title(Datasets_name{d},'FontWeight','normal')
 end
-
-% plot Legend :
-y = length(My_norm):-1:1;
-x = 1*ones(size(y));
-
-subplot(3,3,9)
-scatter(x,y,60,my_colors,'s','filled')
-xlim([0 3])
-hold on
-for ii = 1:length(y)
-	text(x(ii)+.2,y(ii),My_norm{ii},'FontSize',12)
-end
-axis off
-
-dim = [32 24];
+set(gca,'XTickLabel',My_norm)
+dim = [24 28];
 set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto',...
 'PaperPosition',[0 0 dim],'PaperSize',[dim])
 print(gcf,['Fig/figure_S4'],'-dpdf');

@@ -523,27 +523,34 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
         with_error_bar = false;
 
     // Get number of gene and number of cells
-	string command;
-	int out;
-	string file_name = sanity_folder + "n_gene_n_cell";
-    command = "wc -l " + sanity_folder + "delta.txt|cut -f1 -d' ' > " + file_name;
-    out = system(command.c_str());
-	command = "head -1 " + sanity_folder + "delta.txt|wc -w >> " + file_name;
-    out = system(command.c_str());
-	ifstream myfile (file_name);
-	string line;
-    if (myfile.is_open()){
-        getline (myfile,line);
-        N_gene = atoi(line.c_str());
-        getline (myfile,line);
-        N_cell = atoi(line.c_str());
-        myfile.close();
-        command = "rm " + file_name;
-        out = system(command.c_str());
-    }
-    else{
-        cerr << "Unable to open " + file_name + "\n";
-    }
+	N_gene = -1;
+	N_cell = -1;
+	ifstream in(sanity_folder + "delta.txt");
+	if (in.is_open()){
+		N_gene = 0;
+		N_cell = 0;
+		string line;
+		
+		// get first line and count columns
+		getline(in, line);
+		++N_gene;
+		istringstream iss(line);
+		do{
+			string sub;
+			iss >> sub;
+			if (sub.length())
+				++N_cell;
+		}
+		while(iss);
+
+		// Now count genes in remaining lines
+		while ( getline(in, line) ){
+			   ++N_gene;
+		}
+	}else{
+		cerr << "Unable to open " + sanity_folder + "delta.txt\n";
+	}
+
 }
 
 static void show_usage(void)

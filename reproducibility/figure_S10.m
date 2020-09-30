@@ -2,33 +2,26 @@ clear all; close all; clc;
 
 addpath('scripts')
 
-My_norm = {'RawCounts','TPM','DCA','Deconvolution','MAGIC','SanityErrorbar','SAVER','scImpute',           'sctransform','scVI' 'Sanity'};
+My_norm = {'RawCounts','TPM','DCA','Deconvolution','MAGIC','SanityErrorbar','SAVER','scImpute','sctransform','scVI' 'Sanity'};
 
 % Get true distance from simulated data (run run_Simulations.m)
 load('data/Simulated_Branched_Random_Walk.mat');
 Eucl{1} = D_true;
 Edges_1 = linspace(0,max(Eucl{1}),200)';
 
-% Load Raw UMI counts, and find genes with more that 1 UMI count per cell on average.
-T = readtable('data/Simulated_Branched_Random_Walk_UMI_counts.txt','ReadRowNames',1,'delimiter','\t');
-N_per_gene = sum(T{:,:},2);
-N_cell = size(T,2);
-idx_g = find(N_per_gene>N_cell);
-
 % Compare with inferred distance
 figure('visible','off'); f=1;
 for my_norm = My_norm
 
-    % Compute cell-cell distances
-    if strcmp(my_norm{:},'SanityErrorbar')
-        % For Sanity distance with errorbar, run:
-        % Sanity_distance -f 'Sanity output folder' -s2n 0 -err 1
-        % After keeping only the gene (rows) with at least 1 UMI per cell on average
-        Eucl{2} = load('path/to/Sanity/folder/cell_cell_distance_with_errorbar.txt');
-    else
-        load(['data/Simulated_Branched_Random_Walk_' my_norm{:} '_normalization.mat']);
-        Eucl{2} = pdist(M(idx_g,:)');
-    end
+	% Compute cell-cell distances
+	if strcmp(my_norm{:},'SanityErrorbar')
+		% For Sanity distance with errorbar, run:
+		% Sanity_distance -f 'Sanity output folder' -s2n 0 -err 1
+		Eucl{2} = load('path/to/Sanity/folder/cell_cell_distance_with_errorbar.txt');
+	else
+		load(['data/Simulated_Branched_Random_Walk_' my_norm{:} '_normalization.mat']);
+		Eucl{2} = pdist(M');
+	end
 
 	% Compute 2d histogram
 	Edges_2 = linspace(0,max(Eucl{2}),200)';
@@ -66,5 +59,5 @@ end
 % Print
 dim = [36 36];
 set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto','PaperPosition',[0 0 dim],'PaperSize',[dim]);
-print(gcf,'Fig/figure_S11','-dpdf');
+print(gcf,'Fig/figure_S10','-dpdf');
 

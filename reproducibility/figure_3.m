@@ -1,69 +1,80 @@
-clear all; close all;
+clear all; close all; clc;
 
 addpath('scripts')
 
-My_norm = {'RawCounts','TPM','DCA','MAGIC','Sanity','SAVER','scImpute','scVI'};
+My_norm = {'True' 'RawCounts','TPM','DCA','Deconvolution','MAGIC','Sanity','SAVER','scImpute',            'sctransform','scVI'};
 
-% define colors
-tmp_colors = cbrewer('qual','Set1',length(My_norm));
-for ii = 1:length(My_norm)
-    my_colors{ii} = tmp_colors(ii,:);
-end
-tmp_colors = cbrewer('qual','Dark2',8);
-my_colors{6} = mean([my_colors{6}; tmp_colors(6,:)]);
-
-% Get total UMI count per cell
-T = readtable(['data/Zeisel_UMI_counts.txt'],'ReadRowNames',1,'delimiter','\t');
-UMI_per_cell = sum(T{:,:},1)';
-
-figure('visible','off')
-
-% Example gene : Zbed3 in Zeisel
-idx_Zbed3 = 8709;
 for n = 1:length(My_norm)
-
-	load(['data/Zeisel_' My_norm{n} '_normalization.mat'])
-	rho = corr(M(idx_Zbed3,:)',log(UMI_per_cell));
-
-	subplot(4,length(My_norm),n)
-	semilogx(UMI_per_cell,M(idx_Zbed3,:),'.','color',my_colors{n},'MarkerSize',3)
-	title(['R = ' num2str(rho,2)],'FontWeight','normal','Fontsize',8)
-	set(gca,'xtick',[],'ytick',[])
-	box off
-	axis([min(UMI_per_cell) max(UMI_per_cell) min(M(idx_Zbed3,:)) max(M(idx_Zbed3,:))])
-	if n==5
-		xlabel('log N_c')
-	end
-	if n==1
-		ylabel({'Zbed3','expression'})
+	if strcmp(My_norm{n},'True')
+		% Need to run run_Simulations.m to create data/Simulated_Baron_Independent_Genes.mat
+		load('data/Simulated_Baron_Independent_Genes.mat');
+		my_var(:,n) =  var(E,0,2);
+	elseif strcmp(My_norm{n},'Sanity')
+		tmp = readtable('data/Simulated_Baron_Independent_Genes_Sanity_variance.txt');
+		my_var(:,n) = tmp{:,:};
+	else
+		load(['data/Simulated_Baron_Independent_Genes_' My_norm{n} '_normalization.mat']);
+		my_var(:,n) =  nanvar(M,0,2);
 	end
 end
 
+% var-var scatter
+figure('visible','off');
+for n = 2:length(My_norm)
+	subplot(4,3,n-1);
+	x = [0 24];
+	plot(x,x,'color',[.5 .5 .5]);
+	hold on;
+	scatter(my_var(:,1),my_var(:,n),1,log10(mean_UMI),'.');
+	if strcmp(My_norm{n},'Deconvolution')
+		title(['Deconv. r: ' num2str(corr(my_var(:,1),my_var(:,n)),1)],'FontWeight','Normal')
+	else
+		title([My_norm{n} ' r: ' num2str(corr(my_var(:,1),my_var(:,n)),2)],'FontWeight','Normal')
+	end
 
-% Get correlation between gene expression and total UMI counts
+	x_min = 0;
+	x_max = 24;
+	y_min = 0;
+	y_max = 11;
+	axis([x_min x_max y_min y_max])
+	xtick = 0:5:20;
+	ytick = 0:2.5:10;
+	set(gca,'ytick',ytick,'xtick',xtick);
 
-% Mesure correlation on various normalisations
-C = nan(size(UMI_per_cell,1),length(My_norm));
-for n = 1:length(My_norm)
-	load(['data/Zeisel_' My_norm{n} '_normalization.mat'])
-	C(:,n) = corr(M',log(UMI_per_cell));
+	if strcmp(My_norm{n},'sctransform')
+		axis([x_min x_max y_min max(my_var(:,n))]);
+		set(gca,'ytick',0:15:60);
+	elseif mod(n-1,3)~=1
+		set(gca,'yticklabel',[]);
+	end
+
+	if n-1<7
+		set(gca,'xticklabel',[]);
+	end
+
+	if n-1==4
+		ylabel('Inferred variance')
+	end
+	if n-1==8
+		xlabel('True variance')
+	end
 end
-
-subplot(4,1,[2 4])
-x_names = [];
-
-distributionPlot(C,'color',my_colors,'showMM',0,'globalNorm',1,'distWidth',1);
-grid on
-set(gca,'Xtick',1:length(My_norm),'XTickLabel',[])
-axis([0.5 length(My_norm)+.5 -1 1])
-set(get(gca,'Ylabel'),'String',{'Correlation between','gene log expression','and log total UMI count'})
-set(gca,'XTickLabel',My_norm,'XTickLabelRotation',0)
-
-dim = [24 10];
+dim = [16 20];
 set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto',...
 'PaperPosition',[0 0 dim],'PaperSize',[dim])
-print(gcf,['Fig/figure_3'],'-dpdf');
+print(gcf,['Fig/figure_3','-r1000','-dpng');
 
+% Plot colorbar
+figure;
+sort_mean = sort(my_mean(:,1));
+scatter(sort_mean([1:10 end]),sort_mean([1:10 end]),1,sort_mean([1:10 end]),'.')
+hcb = colorbar;
+set(get(hcb,'Title') ,'String','<UMI> per cell');
+hcb.Ruler.Scale = 'log';
+hcb.Ruler.TickValues = [.001 .01 0.1 1 10 100 1000];
 
-
+dim = [12 5];
+set(gcf,'units','Centimeters','PaperUnits','Centimeters','PaperPositionMode','Auto',...
+'PaperPosition',[0 0 dim],'PaperSize',[dim])
+print(gcf,'Fig/figure_3_colorbar','-dsvg');
 
