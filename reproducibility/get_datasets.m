@@ -1,6 +1,6 @@
 clear all;
 
-%%%%% Get the raw dataset on Zenedo: https://doi.org/10.5281/zenodo.3996271 %%%%
+%%%%% Get the raw dataset on Zenedo: https://doi.org/10.5281/zenodo.4009187 %%%%
 
 Datasets = {'Gruen_ESC_SC_2i','Gruen_ESC_SC_serum','Gruen_ESC_RNA_2i','Gruen_ESC_RNA_serum','Zeisel' 'Baron' 'Chen' 'LaManno_Embryo' 'LaManno_ES' 'LaManno_MouseEmbryo' 'Simulated_Baron_Independent_Genes','Simulated_Branched_Random_Walk'};
 
