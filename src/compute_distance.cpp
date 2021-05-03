@@ -25,7 +25,7 @@ void get_Di_euclidean(double **delta, double *D, int N_gene, int N_cell, int i);
 // I/O
 void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff, bool &with_error_bar, int &N_threads, int &N_gene, int &N_cell);
 static void show_usage(void);
-void load_matrix(string sanity_folder, double **delta, double **epsilon2, double *variance, int N_gene, int N_cell);
+void load_matrix(string sanity_folder, double **delta, double **epsilon2, double *variance, int N_gene, int N_cell, bool with_error_bar);
 void print_distance(string out_file, double **D, int N_cell);
 
 int main(int argc, char** argv){
@@ -66,7 +66,7 @@ int main(int argc, char** argv){
 
 	// Get data
 	cout << "Get data... ";
-	load_matrix(sanity_folder, delta_all, epsilon2_all, variance_all, N_gene, N_cell);	
+	load_matrix(sanity_folder, delta_all, epsilon2_all, variance_all, N_gene, N_cell, with_error_bar);	
 
 	// Compute signal 2 noise
 	bool idx_gene[N_gene];
@@ -342,7 +342,7 @@ void get_Di_euclidean(double **delta, double *D, int N_gene, int N_cell, int i){
 }
 
 
-void load_matrix(string sanity_folder, double **delta, double **epsilon2, double *variance, int N_gene, int N_cell){
+void load_matrix(string sanity_folder, double **delta, double **epsilon2, double *variance, int N_gene, int N_cell, bool with_error_bar){
 
 	string my_file;
 	FILE *infp;
@@ -414,31 +414,33 @@ void load_matrix(string sanity_folder, double **delta, double **epsilon2, double
 	fclose(infp);
 
 	// Read variance
-	my_file = sanity_folder + "variance.txt";
-	infp = (FILE *) fopen(my_file.c_str(),"r");
-	if(infp == NULL){
-		fprintf(stderr,"Cannot open input file %s\n",my_file.c_str());
-		exit(EXIT_FAILURE);
+	if(with_error_bar){
+		my_file = sanity_folder + "variance.txt";
+		infp = (FILE *) fopen(my_file.c_str(),"r");
+		if(infp == NULL){
+			fprintf(stderr,"Cannot open input file %s\n",my_file.c_str());
+			exit(EXIT_FAILURE);
+		}
+		for (g = 0; g < N_gene; g++){
+			retval = fgets(ss,3000000,infp);
+			if(retval == NULL){
+				fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
+				return;
+			}
+			token = strtok(ss," \t");
+			if(token != NULL){
+				variance[g] = atof(token);
+			}else{
+				fprintf(stderr,"Error: not enough fields on line number %d:\n",g);
+				return;
+			}
+			token = strtok(NULL," \t");
+			if(token != NULL){
+				fprintf(stderr,"Error: too many fields on line number %d:\n",g);
+			}
+		}
+		fclose(infp);
 	}
-	for (g = 0; g < N_gene; g++){
-		retval = fgets(ss,3000000,infp);
-		if(retval == NULL){
-			fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
-			return;
-		}
-		token = strtok(ss," \t");
-		if(token != NULL){
-			variance[g] = atof(token);
-		}else{
-			fprintf(stderr,"Error: not enough fields on line number %d:\n",g);
-			return;
-		}
-		token = strtok(NULL," \t");
-		if(token != NULL){
-			fprintf(stderr,"Error: too many fields on line number %d:\n",g);
-		}
-	}
-	fclose(infp);
 
 	return;
 }
