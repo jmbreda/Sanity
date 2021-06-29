@@ -5,7 +5,7 @@
 Sanity infers the log expression levels *x<sub>gc</sub>* of gene *g* in cell *c* by filtering out 
 the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *c*.
 
-See our [preprint](https://doi.org/10.1101/2019.12.28.889956 "bioRxiv: Bayesian inference of the gene expression states of single cells from scRNA-seq data") for more details.
+See our [publication](https://www.nature.com/articles/s41587-021-00875-x "Bayesian inference of gene expression states from single-cell RNA-seq data") for more details.
 
 ### Reproducibility
 The raw and normalized datasets mentionned in the [preprint](https://doi.org/10.1101/2019.12.28.889956 "bioRxiv: Bayesian inference of the gene expression states of single cells from scRNA-seq data") are available on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3996271.svg)](https://doi.org/10.5281/zenodo.3996271). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
@@ -164,4 +164,4 @@ make Sanity_distance
 Sanity/bin/Sanity_distance
 ```
 ## Help
-For any questions or assistance regarding Sanity, please post your question the issues section or contact us at jeremie.breda@unibas.ch
+For any questions or assistance regarding Sanity, please post your question in the issues section.
