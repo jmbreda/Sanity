@@ -5,6 +5,8 @@
 #include <string>
 #include <fstream>
 #include <omp.h>
+#include <ctime>
+#include <iomanip> 
 
 #include <ReadInputFiles.h>
 #include <FitFrac.h>
@@ -82,6 +84,32 @@ int main (int argc, char** argv){
 	a = 1.0;
 	b = 0.0;
 
+	// Estimage memory usage
+	double size_of_double = 8;
+	
+	// main double variables:
+	// G-array : n, mu, var_mu, var_gene
+	// C-array : N_c
+	// GxC array : n_c, delta, var_delta
+	// Gxnumbin array : lik
+	//
+	// parallel loop variables:
+	// C-array: f, sig2_delta_c, sig2_delta_num, sig2_delta_den2, Q
+	// numbin-array: mu_v
+	// Cxnumbin-array: delta_v, sig2_delta_v
+	//
+	//
+	double usage_bytes = (4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
+	
+	cout << std::setprecision(3);
+	if ( usage_bytes > 1e9 ){
+		cout << "Estimated memory usage: " << usage_bytes/1e9 << " GB\n";
+	}else if ( usage_bytes > 1e6 ){
+		cout << "Estimated memory usage: " << usage_bytes/1e6 << " MB \n";
+	}else{
+		cout << "Estimated memory usage: " << usage_bytes/1e3 << " KB \n";
+	}	
+
     // Declare output variable
 	double *mu = new double [G];
 	double *var_mu = new double [G];
@@ -101,10 +129,41 @@ int main (int argc, char** argv){
 			lik[g][k] = -1.0; 
 	}
 
+	// Etimate running time:
+	int N_est = 10;
+	if ( N_est < G ){
+		// start timer
+		clock_t begin = clock();
+
+		// run on N_est genes
+		for(g=0;g<N_est;++g){
+			get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,      numbin,a,b,lik[g]);
+		}
+
+		// stop timer
+		clock_t end = clock();
+		double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+		double estimated_running_time = elapsed_secs/N_est*(G-N_est)/N_threads;
+
+		// output esimated running time
+		if ( estimated_running_time > 86400 ){
+			cout << "Estimated running time: " << estimated_running_time/(3600*24) << " days\n";
+		}else if ( estimated_running_time > 3600 ){
+			cout << "Estimated running time: " << estimated_running_time/3600 << " hours\n";
+		}else if ( estimated_running_time > 60 ){
+			cout << "Estimated running time: " << estimated_running_time/60 << " minutes\n";
+		}else{
+			cout << "Estimated memory usage: " << estimated_running_time << " seconds\n";
+		}
+	}else{
+		N_est = 0;
+	}
+	cout << std::setprecision(6);
+
    	// Get Loglikelihood :
 	cout << "Fit gene expression levels\n";
 	#pragma omp parallel for num_threads(N_threads)
-	for(g=0;g<G;++g){
+	for(g=N_est;g<G;++g){
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g]);
 	}
 
