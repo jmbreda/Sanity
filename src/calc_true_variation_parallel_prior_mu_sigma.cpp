@@ -99,15 +99,16 @@ int main (int argc, char** argv){
 	// Cxnumbin-array: delta_v, sig2_delta_v
 	//
 	//
-	double usage_bytes = (4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
+	double usage_bytes = 1.1*(4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
 	
 	cout << std::setprecision(3);
+	cout << "Estimated memory usage: ";
 	if ( usage_bytes > 1e9 ){
-		cout << "Estimated memory usage: " << usage_bytes/1e9 << " GB\n";
+		cout << usage_bytes/1e9 << " GB\n";
 	}else if ( usage_bytes > 1e6 ){
-		cout << "Estimated memory usage: " << usage_bytes/1e6 << " MB \n";
+		cout << usage_bytes/1e6 << " MB\n";
 	}else{
-		cout << "Estimated memory usage: " << usage_bytes/1e3 << " KB \n";
+		cout << usage_bytes/1e3 << " KB\n";
 	}	
 
     // Declare output variable
@@ -146,15 +147,17 @@ int main (int argc, char** argv){
 		double estimated_running_time = elapsed_secs/N_est*(G-N_est)/N_threads;
 
 		// output esimated running time
+		cout << "Estimated running time: ";
 		if ( estimated_running_time > 86400 ){
-			cout << "Estimated running time: " << estimated_running_time/(3600*24) << " days\n";
+			cout << estimated_running_time/(3600*24) << " days ";
 		}else if ( estimated_running_time > 3600 ){
-			cout << "Estimated running time: " << estimated_running_time/3600 << " hours\n";
+			cout << estimated_running_time/3600 << " hours ";
 		}else if ( estimated_running_time > 60 ){
-			cout << "Estimated running time: " << estimated_running_time/60 << " minutes\n";
+			cout << estimated_running_time/60 << " minutes ";
 		}else{
-			cout << "Estimated memory usage: " << estimated_running_time << " seconds\n";
+			cout << estimated_running_time << " seconds ";
 		}
+		cout << "(Excluding reading/writing operations.)\n";
 	}else{
 		N_est = 0;
 	}
