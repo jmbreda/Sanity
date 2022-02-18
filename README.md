@@ -2,10 +2,13 @@
 
 **Sa**mpling **N**oise based **I**nference of **T**ranscription Activit**Y** : Filtering of Poison noise on a single-cell RNA-seq UMI count matrix
 
+Single-cell RNA sequencing normalization algorithm presented in the publication [Bayesian inference of gene expression states from single-cell RNA-seq data -
+J Breda, M Zavolan, E van Nimwegen - Nature Biotechnology, 2021](https://www.nature.com/articles/s41587-021-00875-x).
+
 Sanity infers the log expression levels *x<sub>gc</sub>* of gene *g* in cell *c* by filtering out 
 the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *c*.
 
-See our [publication](https://www.nature.com/articles/s41587-021-00875-x "Bayesian inference of gene expression states from single-cell RNA-seq data") for more details.
+
 
 ### Reproducibility
 The raw and normalized datasets mentionned in the [preprint](https://doi.org/10.1101/2019.12.28.889956 "bioRxiv: Bayesian inference of the gene expression states of single cells from scRNA-seq data") are available on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
@@ -14,7 +17,7 @@ The scripts used for running the bechmarked normalization methods and for making
 
 ## Input
 
-* Count Matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values. (`'path/to/text_file'`)
+* UMI count matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values. (`'path/to/text_file'`)
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
@@ -27,12 +30,12 @@ The scripts used for running the bechmarked normalization methods and for making
 	* (optional) Cell ID file: Named `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * (optional) Destination folder (`'path/to/output/folder'`, default: `pwd`)
 * (optional) Number of threads (integer, default: `4`)
-* (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `4`)
+* (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 * (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
 * (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 ## Output
 
-* log_transcription_quotients.txt: *(N<sub>g</sub> x N<sub>c</sub>)* table of inferred log expression levels. The gene expression levels are normalized to 1, meaning that the summed expression of all genes in a cell is approximately 1. Note that we use the natural logarithm, so to change the normalization one should multiply the exponential of the expression by the wanted normalization (*e.g.* mean or median number of captured gene per cell).
+* log_transcription_quotients.txt: *(N<sub>g</sub> x N<sub>c</sub>)* table. This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *sum<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene $g$ in cell $c$ one would thus need to multiply $exp(x_gc)$ by the estimated total number of mRNAs $M$ in the cell.
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
