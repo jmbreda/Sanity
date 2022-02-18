@@ -21,8 +21,8 @@ The scripts used for running the bechmarked normalization methods and for making
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
-| Gene 1 | 1.0 | 3.0 | 0.0 |
-| Gene 2 | 2.0 | 6.0 | 1.0 |
+| Gene 1 | 1.0 | 2.0 | 0.0 |
+| Gene 2 | 6.0 | 3.0 | 1.0 |
 | ... | |
 
 * (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Named `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
@@ -35,30 +35,30 @@ The scripts used for running the bechmarked normalization methods and for making
 * (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 ## Output
 
-* log_transcription_quotients.txt: *(N<sub>g</sub> x N<sub>c</sub>)* table. This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
+* log_transcription_quotients.txt: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
-  | Gene 1 | 0.25 | -0.29 | -0.54 |
-  | Gene 2 | -0.045 | -0.065 | 0.11 |
+  | Gene 1 | -13.7227 | -13.722 | -13.729 |
+  | Gene 2 |  -9.96744 | -10.2522 | -10.1453 |
   | ... | |
-
-* ltq_error_bars.txt : *(N<sub>g</sub> x N<sub>c</sub>)* table of error bars on inferred log expression levels
+  
+* ltq_error_bars.txt : Table with the error-bars on the estimates of the LTQs *x<sub>gc</sub>* for each gene *g* in each cell *c*.
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
-  | Gene 1 | 0.015 | 0.029 | 0.042 |
-  | Gene 2 | 0.0004 | 0.0051 | 0.0031 |
+  | Gene 1 | 0.630111 | 0.630198 | 0.624802 |
+  | Gene 2 | 0.315551 | 0.325912 | 0.301861 |
   | ... | |
 
 ## Extended output (optional)
 
-* mu.txt : *(N<sub>g</sub> x 1)* vector of inferred mean log expression levels
-* d_mu.txt : *(N<sub>g</sub> x 1)* vector of inferred error bars on mean log expression levels
-* variance.txt : *(N<sub>g</sub> x 1)* vector of inferred variance per gene in log expression levels
-* delta.txt : *(N<sub>g</sub> x N<sub>c</sub>)* matrix of inferred log expression levels centered in 0
-* d_delta.txt : *(N<sub>g</sub> x N<sub>c</sub>)* matrix of inferred error bars log expression levels centered in 0
-* likelihood.txt : *(N<sub>g</sub>+1 x N<sub>b</sub>)* matrix of normalized variance likelihood per gene, with *N<sub>b</sub>* the number of bins on the variance.
+* mu.txt : Estimated average LTQ *&mu;<sub>g</sub>* of each gene *g* (averaged over all cells)
+* d_mu.txt : Error bars on the inferred mean LTQs *&mu;<sub>g</sub>*.
+* variance.txt : Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file log_transcription_quotients.txt. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly adviced to use the results in this file.
+* delta.txt : Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*.
+* d_delta.txt : Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*.
+* likelihood.txt : This file encodes the posterior distribution of each gene’s true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains the matrix with posterior values *P<sub>gb</sub>* for each gene *g* and each bin *b*.
 
   | | | | | |
   |:-------|:------:|:------:|:------:|------:|
