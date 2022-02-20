@@ -11,7 +11,7 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 
 ### Reproducibility
-The raw and normalized datasets mentionned in the [preprint](https://doi.org/10.1101/2019.12.28.889956 "bioRxiv: Bayesian inference of the gene expression states of single cells from scRNA-seq data") are available on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
+The raw UMI count and normalized datasets mentionned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DO I](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
 
 The scripts used for running the bechmarked normalization methods and for making the figures of the preprint are in the reproducibility folder.
 
