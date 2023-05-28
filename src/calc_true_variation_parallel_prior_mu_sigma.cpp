@@ -78,6 +78,22 @@ int main (int argc, char** argv){
 		ReadUMIcountMatrix(in_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, N_char);
 	}
 
+
+
+	// Remove the total UMI correction
+	// get mean count per cell
+	double mean_N_c = 0;
+	for(c=0;c<C;++c){
+		mean_N_c += N_c[c];
+	}
+	mean_N_c /= C;
+	// Now replce N_c by N
+	for(c=0;c<C;++c){
+		N_c[c] = mean_N_c;
+	}
+
+
+
 	// alpha and beta of gamma prior on mu
 	double a;
 	double b;
@@ -361,7 +377,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		L = -0.5*((double) C)*log(v); // (56) 1st term
 		for(i=0;i<C;++i){
 			delta_v[k][i] = log(f[i]) - log(N_c[i]) + q; // equation (67)
-			L += ( n_c[i]+a)*delta_v[k][i];//3rd term in equation (56)
+			L += n_c[i]*delta_v[k][i];// Bug fix: remove a term as in Equation 19 of Sanity paper SI
 			delsq += delta_v[k][i]*delta_v[k][i];
 		}
 		L -= delsq/(2*v);// (56) 2nd term
