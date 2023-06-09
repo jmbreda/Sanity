@@ -5,20 +5,23 @@ rng(sim_seed);
 
 % load Baron raw UMI counts
 T = readtable('data/Baron_UMI_counts.txt','ReadRowNames',1,'delimiter','\t');
-[N_gene,N_cell] = size(T{:,:});
-
-% Get total UMI per cell, randomly shuffle
-N_c = sum(T{:,:},1);
-N_c = N_c(randperm(N_cell));
-
-% Get gene mean transcription quotient from raw count Baron
-mu_tilde_g = log(sum(SC{:,:},2)./sum(sum(SC{:,:})));
-
-% Simulate gene variance
-sig2_g = exprnd(2,N_gene,1);
 
 % Loop over the 2 simulations
 for sim_name = {'Simulated_Baron_Independent_Genes','Simulated_Branched_Random_Walk'} 
+
+	% get dimensions
+	[N_gene,N_cell] = size(T{:,:});
+
+	% Get total UMI per cell, randomly shuffle
+	N_c = sum(T{:,:},1);
+	N_c = N_c(randperm(N_cell));
+
+	% Get gene mean transcription quotient from raw count Baron
+	mu_tilde_g = log(sum(T{:,:},2)./sum(sum(T{:,:})));
+
+	% Simulate gene variance
+	sig2_g = exprnd(2,N_gene,1);
+
 	switch sim_name{:}
 	case 'Simulated_Baron_Independent_Genes'
 
