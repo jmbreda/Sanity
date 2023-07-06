@@ -19,7 +19,7 @@ using namespace std;
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char);
+void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_charm, bool &no_norm);
 static void show_usage(void);
 
 int main (int argc, char** argv){
@@ -35,7 +35,8 @@ int main (int argc, char** argv){
     double vmax = 50.0;
 	int numbin = 160;
 	int N_char;
-	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char);
+	bool no_norm(false);
+	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char, no_norm);
 
 	// count Number of genes and cells
 	int G, C;
@@ -79,20 +80,21 @@ int main (int argc, char** argv){
 	}
 
 
+	// Remove the total UMI correction if no cell size normalization option is true
+	if (no_norm){
+		
+		// get mean count per cell
+		double mean_N_c = 0;
+		for(c=0;c<C;++c){
+			mean_N_c += N_c[c];
+		}
+		mean_N_c /= C;
 
-	// Remove the total UMI correction
-	// get mean count per cell
-	double mean_N_c = 0;
-	for(c=0;c<C;++c){
-		mean_N_c += N_c[c];
+		// Now replce N_c by N	
+		for(c=0;c<C;++c){
+			N_c[c] = mean_N_c;
+		}
 	}
-	mean_N_c /= C;
-	// Now replce N_c by N
-	for(c=0;c<C;++c){
-		N_c[c] = mean_N_c;
-	}
-
-
 
 	// alpha and beta of gamma prior on mu
 	double a;
@@ -525,7 +527,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
     return e*e;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char){
+void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char, bool &no_norm){
 
     if (argc<2)
         show_usage();
@@ -553,7 +555,8 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 
 	int N_param(9);
 	string extended_output("false");
-    string to_find[9][2] = {{"-f", "--file"},
+	string no_norm_str("false");
+    string to_find[10][2] = {{"-f", "--file"},
 							{"-d", "--destination"},
 							{"-n", "--n_threads"},
 							{"-e", "--extended_output"},
@@ -561,7 +564,8 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
          					{"-vmax", "--variance_max"},
 					    	{"-nbin", "--number_of_variance_bins"},
 							{"-mtx_genes","--mtx_gene_name_file"},
-							{"-mtx_cells","--mtx_cell_name_file"}};
+							{"-mtx_cells","--mtx_cell_name_file"},
+							{"-no_norm","--no_cell_size_normalization"}};
 
     int j;
     int idx;
@@ -584,6 +588,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 				if(j==6) numbin = atoi(argv[idx+1]);
 				if(j==7) gene_name_file = argv[idx+1];
 				if(j==8) cell_name_file = argv[idx+1];
+				if(j==9) no_norm_str = argv[idx+1];
 
 				// add '/' to out_folder if not already
 				if( j == 1 && out_folder.back() != '/' )
@@ -599,6 +604,9 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 
 	if ( extended_output == "true" || extended_output == "1" )
 		print_extended_output = true;
+	
+	if ( no_norm_str == "true" || no_norm_str == "1" )
+		no_norm = true;
 
 	// Get input file extension
 	in_file_extension = in_file.substr(in_file.find(".")+1,in_file.length());
@@ -634,9 +642,10 @@ static void show_usage(void)
 		 << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
          << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
          << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
-         << "\t-e,--extended_output\tOption to print extended output (default: false)\n"
+         << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
          << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
          << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
-         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n";
+         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
+		 << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n";
     exit(0);
 }

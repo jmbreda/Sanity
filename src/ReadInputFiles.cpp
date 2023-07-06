@@ -3,6 +3,7 @@
 void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_char){
 
     int g, c;
+    char *retval;
     char *ss = new char [N_char];
     char *sc = new char [N_char];
 	
@@ -16,7 +17,7 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
 
     // Count cell. First line should have the names of the columns (cell names)
     C = 0;
-    fgets(ss,N_char,infp);
+    retval = fgets(ss,N_char,infp);
     strcpy(sc,ss);
     char *token = strtok(ss," \t,");
     while(token){
@@ -39,8 +40,7 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
     // Reopen file to read the counts per gene
     infp = (FILE *) fopen(in_file.c_str(),"r");
     /***first line has names***/
-    fgets(ss,N_char,infp);
-    char *retval;
+    retval = fgets(ss,N_char,infp);
     for(g=0; g<N_rows; ++g){
         retval = fgets(ss,N_char,infp);
         if(retval == NULL){
@@ -81,6 +81,7 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
 void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, string *gene_names, string *cell_names, int N_rows, int G, int C, int N_char){
 
     int row, g, c;
+    char *retval;
     char *ss = new char [N_char];
     char *sc = new char [N_char];
 
@@ -92,7 +93,7 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
     }
 
     /***First line should have the names of the columns (sample names)***/
-    fgets(ss,N_char,infp);
+    retval = fgets(ss,N_char,infp);
 
     /***now go fill in the cell names***/
 	char *token = strtok(ss," \t,");
@@ -123,8 +124,7 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
     /**reopen file to read the counts***/
     infp = (FILE *) fopen(in_file.c_str(),"r");
     // First line has names
-    fgets(ss,N_char,infp);
-    char *retval;
+    retval = fgets(ss,N_char,infp);
     for(row=0; row<N_rows; ++row){
         retval = fgets(ss,N_char,infp);
         if(retval == NULL){
