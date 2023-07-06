@@ -79,10 +79,10 @@ int main (int argc, char** argv){
 		ReadUMIcountMatrix(in_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, N_char);
 	}
 
-
 	// Remove the total UMI correction if no cell size normalization option is true
 	if (no_norm){
-		
+		cout << "No cell size normalization will be performed\n";
+
 		// get mean count per cell
 		double mean_N_c = 0;
 		for(c=0;c<C;++c){
@@ -553,7 +553,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 		}
 	}
 
-	int N_param(9);
+	int N_param(10);
 	string extended_output("false");
 	string no_norm_str("false");
     string to_find[10][2] = {{"-f", "--file"},
@@ -604,7 +604,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 
 	if ( extended_output == "true" || extended_output == "1" )
 		print_extended_output = true;
-	
+
 	if ( no_norm_str == "true" || no_norm_str == "1" )
 		no_norm = true;
 
