@@ -33,6 +33,7 @@ The scripts used for running the bechmarked normalization methods and for making
 * (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 * (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
 * (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
+* (optional) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 ## Output
 
 * log_transcription_quotients.txt: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
@@ -78,10 +79,11 @@ The scripts used for running the bechmarked normalization methods and for making
         -mtx_cells,--mtx_cell_name_file	Specify the cell name text file (only needed if .mtx input file)
 	-d,--destination	Specify the destination path (default: pwd)
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
-	-e,--extended_output	Option to print extended output (default: false)
+	-e,--extended_output	Option to print extended output (default: false, choice: false,0,true,1)
 	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.001)
 	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 50)
 	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 160)
+	-no_norm,--no_cell_size_normalization	Option to skip cell size normalization (default: false, choice: false,0,true,1)
 ```
 
 ## Installation
