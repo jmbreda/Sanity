@@ -6,7 +6,7 @@
 #include <fstream>
 #include <omp.h>
 #include <ctime>
-#include <iomanip> 
+#include <iomanip>
 
 #include <ReadInputFiles.h>
 #include <FitFrac.h>
@@ -23,7 +23,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 static void show_usage(void);
 
 int main (int argc, char** argv){
-	
+
 	string in_file("");
 	string gene_name_file("none");
 	string cell_name_file("none");
@@ -47,12 +47,12 @@ int main (int argc, char** argv){
 
 	if (in_file_extension == "mtx"){
 		Get_G_C_MTX(in_file, N_rows, G, C, gene_idx);
-		printf("There were %d rows\n", N_rows);
-	} else { 
+		fprintf(stderr, "There were %d rows\n", N_rows);
+	} else {
 		Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, N_char);
-		printf("There were %d rows\n", N_rows);
+		fprintf(stderr, "There were %d rows\n", N_rows);
 	}
-	printf("There were %d genes and %d cells\n",G,C);
+	fprintf(stderr, "There were %d genes and %d cells\n",G,C);
 
 	int g, c, k;
 	// Count per cell
@@ -81,7 +81,7 @@ int main (int argc, char** argv){
 
 	// Remove the total UMI correction if no cell size normalization option is true
 	if (no_norm){
-		cout << "No cell size normalization will be performed\n";
+		cerr << "No cell size normalization will be performed\n";
 
 		// get mean count per cell
 		double mean_N_c = 0;
@@ -90,7 +90,7 @@ int main (int argc, char** argv){
 		}
 		mean_N_c /= C;
 
-		// Now replce N_c by N	
+		// Now replce N_c by N
 		for(c=0;c<C;++c){
 			N_c[c] = mean_N_c;
 		}
@@ -104,7 +104,7 @@ int main (int argc, char** argv){
 
 	// Estimage memory usage
 	double size_of_double = 8;
-	
+
 	// main double variables:
 	// G-array : n, mu, var_mu, var_gene
 	// C-array : N_c
@@ -118,17 +118,16 @@ int main (int argc, char** argv){
 	//
 	//
 	double usage_bytes = 1.1*(4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
-	
-	cout << std::setprecision(3);
-	cout << "Estimated memory usage: ";
-	if ( usage_bytes > 1e9 ){
-		cout << usage_bytes/1e9 << " GB\n";
-	}else if ( usage_bytes > 1e6 ){
-		cout << usage_bytes/1e6 << " MB\n";
-	}else{
-		cout << usage_bytes/1e3 << " KB\n";
-	}	
 
+	cerr << std::setprecision(3);
+	cerr << "Estimated memory usage: ";
+	if ( usage_bytes > 1e9 ){
+		cerr << usage_bytes/1e9 << " GB\n";
+	}else if ( usage_bytes > 1e6 ){
+		cerr << usage_bytes/1e6 << " MB\n";
+	}else{
+		cerr << usage_bytes/1e3 << " KB\n";
+	}
     // Declare output variable
 	double *mu = new double [G];
 	double *var_mu = new double [G];
@@ -145,7 +144,7 @@ int main (int argc, char** argv){
 	for(g=0;g<G;g++){
 		lik[g] = new double [numbin];
 		for(k=0;k<numbin;k++)
-			lik[g][k] = -1.0; 
+			lik[g][k] = -1.0;
 	}
 
 	// Etimate running time:
@@ -165,32 +164,38 @@ int main (int argc, char** argv){
 		double estimated_running_time = elapsed_secs/N_est*(G-N_est)/N_threads;
 
 		// output esimated running time
-		cout << "Estimated running time: ";
+		cerr << "Estimated running time: ";
 		if ( estimated_running_time > 86400 ){
-			cout << estimated_running_time/(3600*24) << " days ";
+			cerr << estimated_running_time/(3600*24) << " days ";
 		}else if ( estimated_running_time > 3600 ){
-			cout << estimated_running_time/3600 << " hours ";
+			cerr << estimated_running_time/3600 << " hours ";
 		}else if ( estimated_running_time > 60 ){
-			cout << estimated_running_time/60 << " minutes ";
+			cerr << estimated_running_time/60 << " minutes ";
 		}else{
-			cout << estimated_running_time << " seconds ";
+			cerr << estimated_running_time << " seconds ";
 		}
-		cout << "(Excluding reading/writing operations.)\n";
-	}else{
+		cerr << "(Excluding reading/writing operations.)\n";
+        }else{
 		N_est = 0;
 	}
+	cerr << std::setprecision(6);
 	cout << std::setprecision(6);
 
    	// Get Loglikelihood :
-	cout << "Fit gene expression levels\n";
-	#pragma omp parallel for num_threads(N_threads)
+	cerr << "Fit gene expression levels\n";
+	int g_print(G/(N_threads*40));
+        #pragma omp parallel for num_threads(N_threads)
 	for(g=N_est;g<G;++g){
+		if (g == g_print){
+			fprintf(stderr, "First process now fitting gene %d out of %d.\n", g, (int) G/N_threads);
+			g_print *= 2;
+		}
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g]);
 	}
 
 	// Write output files
 
-	cout << "Print output\n";
+	cerr << "Print output\n";
 	// Write log expression table and error bars table
 	ofstream out_exp_lev, out_d_exp_lev;
 	out_exp_lev.open(out_folder + "log_transcription_quotients.txt",ios::out);
@@ -221,7 +226,7 @@ int main (int argc, char** argv){
 	out_d_exp_lev.close();
 
 	if ( print_extended_output ){
-		
+
 		// Compute variance : \int v*p(v) dv
         for(g=0; g<G; ++g){
 			var_gene[g] = 0.0;
@@ -231,7 +236,7 @@ int main (int argc, char** argv){
 			}
 		}
 
-		cout << "Print extended output\n";
+		cerr << "Print extended output\n";
 		string my_file;
 		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_var_gene, *out_delta, *out_ddelta;
 		// output files
@@ -430,8 +435,8 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
             }
         }
 	}// end v bins loop
-	
-	
+
+
 	// get normalized likelihood from loglikelihood
 	double sum_L;
 	sum_L = 0.0;
@@ -443,7 +448,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 	for(k=0;k<numbin;k++){
 		lik[k] /= sum_L;
 	}
-	
+
 	/*
 	// Multiply by prior
 	for(k=0;k<numbin;k++){
@@ -459,7 +464,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		lik[k] /= sum_L;
 	}
 	*/
-	
+
 	// Average delta, and mu
 	mu = 0.0;
 	for(k=0;k<numbin;k++){
@@ -479,7 +484,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 			delta[i] += lik[k]*delta_v[k][i];
 		}
 	}
-		
+
 	// Compute var_delta = < (delta - <delta>)^2 > + <sig2_delta^2>
 	for(i=0;i<C;i++){
 		var_delta[i] = 0.0;
@@ -610,7 +615,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 
 	// Get input file extension
 	in_file_extension = in_file.substr(in_file.find(".")+1,in_file.length());
-	cout << "File type : " << in_file_extension << "\n";
+	cerr << "File type : " << in_file_extension << "\n";
 
 	// Get number of Character in first row, for iobuffer
 	string command = "head -1 " + in_file + "|wc -c>" + out_folder + "tmp";
