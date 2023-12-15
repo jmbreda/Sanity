@@ -127,7 +127,8 @@ int main (int argc, char** argv){
 		cout << usage_bytes/1e6 << " MB\n";
 	}else{
 		cout << usage_bytes/1e3 << " KB\n";
-	}	
+	}
+        cout << std::flush;	
 
     // Declare output variable
 	double *mu = new double [G];
@@ -176,7 +177,8 @@ int main (int argc, char** argv){
 			cout << estimated_running_time << " seconds ";
 		}
 		cout << "(Excluding reading/writing operations.)\n";
-	}else{
+	        cout << std::flush;
+        }else{
 		N_est = 0;
 	}
 	cout << std::setprecision(6);
