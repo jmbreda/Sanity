@@ -185,7 +185,6 @@ int main (int argc, char** argv){
    	// Get Loglikelihood :
 	cerr << "Fit gene expression levels\n";
 	int g_print(G/(N_threads*40));
-	fprintf(stderr, "Printing after %d genes", g_print);
         #pragma omp parallel for num_threads(N_threads)
 	for(g=N_est;g<G;++g){
 		if (g == g_print){	
