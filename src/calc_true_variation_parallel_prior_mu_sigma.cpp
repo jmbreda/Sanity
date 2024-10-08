@@ -19,11 +19,10 @@ using namespace std;
 /***Function declarations ****/
 void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_charm, bool &no_norm);
+void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_charm, bool &no_norm, bool &max_v_output, bool &post_v_output);
 static void show_usage(void);
 
 int main (int argc, char** argv){
-
 	string in_file("");
 	string gene_name_file("none");
 	string cell_name_file("none");
@@ -36,7 +35,9 @@ int main (int argc, char** argv){
 	int numbin = 160;
 	int N_char;
 	bool no_norm(false);
-	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char, no_norm);
+	bool max_v_output(false);
+	bool post_v_output(true);
+	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char, no_norm, max_v_output, post_v_output);
 
 	// count Number of genes and cells
 	int G, C;
@@ -156,6 +157,8 @@ int main (int argc, char** argv){
 		// run on N_est genes
 		for(g=0;g<N_est;++g){
 			get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,      numbin,a,b,lik[g]);
+			cout << "g: " << g << "\n";
+			exit(0);
 		}
 
 		// stop timer
@@ -351,7 +354,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 	double *f = new double[C];
 	double **delta_v = new double *[numbin];
     double **sig2_delta_v = new double *[numbin];
-    for(k=0;k<numbin;++k){
+	for(k=0;k<numbin;++k){
         delta_v[k] = new double [C];
         sig2_delta_v[k] = new double [C];
     }
@@ -532,7 +535,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
     return e*e;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char, bool &no_norm){
+void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char, bool &no_norm, bool &max_v_output, bool &post_v_output){
 
     if (argc<2)
         show_usage();
@@ -547,7 +550,6 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
         if (argv[i] == get_help[0] || argv[i] == get_help[1])
             show_usage();
     }
-
 	string get_version [2];
 	get_version[0] = "-v";
     get_version[1] = "--version";
@@ -558,10 +560,11 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 		}
 	}
 
-	int N_param(10);
+	int N_param(11);
 	string extended_output("false");
 	string no_norm_str("false");
-    string to_find[10][2] = {{"-f", "--file"},
+	string max_v_str("true");
+    string to_find[11][2] = {{"-f", "--file"},
 							{"-d", "--destination"},
 							{"-n", "--n_threads"},
 							{"-e", "--extended_output"},
@@ -570,7 +573,8 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 					    	{"-nbin", "--number_of_variance_bins"},
 							{"-mtx_genes","--mtx_gene_name_file"},
 							{"-mtx_cells","--mtx_cell_name_file"},
-							{"-no_norm","--no_cell_size_normalization"}};
+							{"-no_norm","--no_cell_size_normalization"},
+							{"-max_v","--get_output_for_maxlik_variance"}};
 
     int j;
     int idx;
@@ -578,7 +582,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
         idx = 0;
         for(i=1;i<argc;i++){
             if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1]){
-                idx = i;
+				idx = i;
                 if ( idx+1 > argc-1 ){
                     cerr << "Error in argument parsing :\n"
                          << argv[i] << " option missing\n";
@@ -594,7 +598,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 				if(j==7) gene_name_file = argv[idx+1];
 				if(j==8) cell_name_file = argv[idx+1];
 				if(j==9) no_norm_str = argv[idx+1];
-
+				if(j==10) max_v_str = argv[idx+1];
 				// add '/' to out_folder if not already
 				if( j == 1 && out_folder.back() != '/' )
 					out_folder = out_folder + '/';
@@ -612,6 +616,17 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 
 	if ( no_norm_str == "true" || no_norm_str == "1" )
 		no_norm = true;
+	
+	cout << "\n\n" << max_v_str << "\n\n";
+	if ( max_v_str == "true" || max_v_str == "1" ){
+		max_v_output = true;
+		post_v_output = true;
+		}
+	else if (max_v_str == "only_max_output"){
+		max_v_output = true;
+		post_v_output = false;
+		}
+
 
 	// Get input file extension
 	in_file_extension = in_file.substr(in_file.find(".")+1,in_file.length());
@@ -651,6 +666,7 @@ static void show_usage(void)
          << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
          << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
          << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
-		 << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n";
-    exit(0);
+		 << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
+		 << "\t-max_v,--get_output_for_maxlik_variance\tOption to also output all results for the prior variance (v_g) that maximizes the likelihood, i.e., without integrating over the posterior for v_g (default: false, choice: false,0,true,1,only_max_output)\n";
+	exit(0);
 }
