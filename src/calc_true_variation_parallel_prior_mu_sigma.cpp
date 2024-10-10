@@ -167,9 +167,7 @@ int main (int argc, char** argv){
 
 		// run on N_est genes
 		for(g=0;g<N_est;++g){
-			cout << "gene: " << g << endl;
 			get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], delta_v_ml[g], var_delta_v_ml[g]);
-			if (g == 1){exit(0);}
 		}
 
 		// stop timer
@@ -204,7 +202,6 @@ int main (int argc, char** argv){
 			fprintf(stderr, "First process now fitting gene %d out of %d.\n", g, (int) G/N_threads);
 			g_print *= 2;
 		}
-		cout << "gene: " << g << endl;
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], delta_v_ml[g], var_delta_v_ml[g]);
 	}
 
