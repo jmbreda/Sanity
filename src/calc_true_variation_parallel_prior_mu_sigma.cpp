@@ -8,6 +8,11 @@
 #include <ctime>
 #include <iomanip>
 
+#include <sys/stat.h>  // For mkdir on Unix-like systems
+#ifdef _WIN32
+    #include <direct.h>  // For _mkdir on Windows
+#endif
+
 #include <ReadInputFiles.h>
 #include <FitFrac.h>
 #include <Digamma_Trigamma.h>
@@ -205,6 +210,14 @@ int main (int argc, char** argv){
 		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],delta[g],var_delta[g],C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], delta_v_ml[g], var_delta_v_ml[g]);
 	}
 
+	// Create subfolder if results need to be stored that take the maximum posterior value for v_g
+	string out_subfolder = out_folder + "/using_max_posterior_v_g/";
+	#ifdef _WIN32
+    	_mkdir(out_subfolder.c_str());  // Use _mkdir on Windows
+	#else
+    	mkdir(out_subfolder.c_str(), 0777);  // Use mkdir on Unix-like systems with full permissions
+	#endif
+
 	// Write output files
 
 	cerr << "Print output\n";
@@ -212,8 +225,8 @@ int main (int argc, char** argv){
 	ofstream out_exp_lev, out_d_exp_lev, out_exp_lev_v_ml, out_d_exp_lev_v_ml;
 	out_exp_lev.open(out_folder + "log_transcription_quotients.txt",ios::out);
 	out_d_exp_lev.open(out_folder + "ltq_error_bars.txt",ios::out);
-	out_exp_lev_v_ml.open(out_folder + "log_transcription_quotients_v_ml.txt",ios::out);
-	out_d_exp_lev_v_ml.open(out_folder + "ltq_error_bars_v_ml.txt",ios::out);
+	out_exp_lev_v_ml.open(out_subfolder + "log_transcription_quotients_v_ml.txt",ios::out);
+	out_d_exp_lev_v_ml.open(out_subfolder + "ltq_error_bars_v_ml.txt",ios::out);
 
 	out_exp_lev << "GeneID";
 	out_d_exp_lev << "GeneID";
@@ -267,7 +280,7 @@ int main (int argc, char** argv){
 		cerr << "Print extended output\n";
 		string my_file;
 		FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_var_gene, *out_delta, *out_ddelta;
-		FILE *out_mu_v_ml, *out_dmu_v_ml, *out_var_gene_v_ml, *out_delta_v_ml, *out_ddelta_v_ml;
+		FILE *out_mu_v_ml, *out_dmu_v_ml, *out_var_gene_v_ml, *out_delta_v_ml, *out_ddelta_sq_v_ml;
 		// output files
 		my_file = out_folder + "geneID.txt";
 		out_gene = (FILE *) fopen(my_file.c_str(),"w");
@@ -318,37 +331,37 @@ int main (int argc, char** argv){
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "mu_v_ml.txt";
+		my_file = out_subfolder + "mu_v_ml.txt";
 		out_mu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_mu_v_ml == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "d_mu_v_ml.txt";
+		my_file = out_subfolder + "d_mu_v_ml.txt";
 		out_dmu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_dmu_v_ml == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "variance_v_ml.txt";
+		my_file = out_subfolder + "variance_v_ml.txt";
 		out_var_gene_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_var_gene_v_ml == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "delta_v_ml.txt";
+		my_file = out_subfolder + "delta_v_ml.txt";
 		out_delta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 		if(out_delta_v_ml == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
 
-		my_file = out_folder + "d_delta_v_ml.txt";
-		out_ddelta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-		if(out_ddelta_v_ml == NULL){
+		my_file = out_subfolder + "d_delta_sq_v_ml.txt";
+		out_ddelta_sq_v_ml = (FILE *) fopen(my_file.c_str(),"w");
+		if(out_ddelta_sq_v_ml == NULL){
 			fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 			exit(EXIT_FAILURE);
 		}
@@ -390,17 +403,17 @@ int main (int argc, char** argv){
 			fprintf(out_dmu_v_ml,"%lf\n",sqrt(var_mu_v_ml[g]));
 			fprintf(out_var_gene_v_ml,"%lf\n",var_gene_v_ml[g]);
 			for(c=0;c<C-1;++c){
-				fprintf(out_delta_v_ml,"%lf\t",delta_v_ml[g][c]);
-				fprintf(out_ddelta_v_ml,"%lf\t",sqrt(var_delta_v_ml[g][c]));
+				fprintf(out_delta_sq_v_ml,"%lf\t",delta_v_ml[g][c]);
+				fprintf(out_ddelta_sq_v_ml,"%lf\t",var_delta_v_ml[g][c]);
 			}
 			fprintf(out_delta_v_ml,"%lf\n",delta_v_ml[g][C-1]);
-			fprintf(out_ddelta_v_ml,"%lf\n",sqrt(var_delta_v_ml[g][C-1]));
+			fprintf(out_ddelta_sq_v_ml,"%lf\n", var_delta_v_ml[g][C-1]);
 		}
 		fclose(out_mu_v_ml);
 		fclose(out_dmu_v_ml);
 		fclose(out_var_gene_v_ml);
 		fclose(out_delta_v_ml);
-		fclose(out_ddelta_v_ml);
+		fclose(out_ddelta_sq_v_ml);
 
 		// Write likelihood
 		ofstream out_lik;
