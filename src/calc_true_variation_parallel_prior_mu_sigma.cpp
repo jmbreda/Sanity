@@ -411,8 +411,8 @@ int main (int argc, char** argv){
 	// Repeat very similar output code for when you want to output the results for max posterior v_g
 	if (max_v_output){
 		ofstream out_exp_lev_v_ml, out_d_exp_lev_v_ml;
-		out_exp_lev_v_ml.open(out_subfolder + "log_transcription_quotients_v_ml.txt",ios::out);
-		out_d_exp_lev_v_ml.open(out_subfolder + "ltq_error_bars_v_ml.txt",ios::out);
+		out_exp_lev_v_ml.open(out_subfolder + "log_transcription_quotients.txt",ios::out);
+		out_d_exp_lev_v_ml.open(out_subfolder + "ltq_error_bars.txt",ios::out);
 
 		out_exp_lev_v_ml << "GeneID";
 		out_d_exp_lev_v_ml << "GeneID";
@@ -458,35 +458,35 @@ int main (int argc, char** argv){
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "mu_v_ml.txt";
+			my_file = out_subfolder + "mu.txt";
 			out_mu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_mu_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "d_mu_v_ml.txt";
+			my_file = out_subfolder + "d_mu.txt";
 			out_dmu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_dmu_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "variance_v_ml.txt";
+			my_file = out_subfolder + "variance.txt";
 			out_var_gene_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_var_gene_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "delta_v_ml.txt";
+			my_file = out_subfolder + "delta.txt";
 			out_delta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_delta_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "d_delta_v_ml.txt";
+			my_file = out_subfolder + "d_delta.txt";
 			out_ddelta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_ddelta_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
