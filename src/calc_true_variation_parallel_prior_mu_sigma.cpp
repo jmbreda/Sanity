@@ -248,15 +248,15 @@ int main (int argc, char** argv){
 	}
 
 	// Create subfolder if results need to be stored that take the maximum posterior value for v_g
-	string out_subfolder = "";
-	if (max_v_output){
-		out_subfolder = out_folder + "/using_max_posterior_v_g/";
-		#ifdef _WIN32
-			_mkdir(out_subfolder.c_str());  // Use _mkdir on Windows
-		#else
-			mkdir(out_subfolder.c_str(), 0777);  // Use mkdir on Unix-like systems with full permissions
-		#endif
-	}
+	// string out_subfolder = "";
+	// if (max_v_output){
+	// 	out_subfolder = out_folder + "/using_max_posterior_v_g/";
+	// 	#ifdef _WIN32
+	// 		_mkdir(out_subfolder.c_str());  // Use _mkdir on Windows
+	// 	#else
+	// 		mkdir(out_subfolder.c_str(), 0777);  // Use mkdir on Unix-like systems with full permissions
+	// 	#endif
+	// }
 
 	// Write output files
 
@@ -411,8 +411,8 @@ int main (int argc, char** argv){
 	// Repeat very similar output code for when you want to output the results for max posterior v_g
 	if (max_v_output){
 		ofstream out_exp_lev_v_ml, out_d_exp_lev_v_ml;
-		out_exp_lev_v_ml.open(out_subfolder + "log_transcription_quotients_v_ml.txt",ios::out);
-		out_d_exp_lev_v_ml.open(out_subfolder + "ltq_error_bars_v_ml.txt",ios::out);
+		out_exp_lev_v_ml.open(out_folder + "log_transcription_quotients_vmax.txt",ios::out);
+		out_d_exp_lev_v_ml.open(out_folder + "ltq_error_bars_vmax.txt",ios::out);
 
 		out_exp_lev_v_ml << "GeneID";
 		out_d_exp_lev_v_ml << "GeneID";
@@ -441,66 +441,68 @@ int main (int argc, char** argv){
 		if ( print_extended_output ){
 			cerr << "Print extended output\n";
 			string my_file;
-			FILE *out_gene_v_ml, *out_cell_v_ml;
+			FILE *out_gene, *out_cell;
 			FILE *out_mu_v_ml, *out_dmu_v_ml, *out_var_gene_v_ml, *out_delta_v_ml, *out_ddelta_v_ml;
-			// output files
-			my_file = out_subfolder + "geneID.txt";
-			out_gene_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_gene_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+			if(!post_v_output){
+				my_file = out_folder + "geneID.txt";
+				out_gene = (FILE *) fopen(my_file.c_str(),"w");
+				if(out_gene == NULL){
+					fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+					exit(EXIT_FAILURE);
+				}
 
-			my_file = out_subfolder + "cellID.txt";
-			out_cell_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_cell_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
+				my_file = out_folder + "cellID.txt";
+				out_cell = (FILE *) fopen(my_file.c_str(),"w");
+				if(out_cell == NULL){
+					fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
+					exit(EXIT_FAILURE);
+				}
 			}
-
-			my_file = out_subfolder + "mu_v_ml.txt";
+			my_file = out_folder + "mu_vmax.txt";
 			out_mu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_mu_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "d_mu_v_ml.txt";
+			my_file = out_folder + "d_mu_vmax.txt";
 			out_dmu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_dmu_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "variance_v_ml.txt";
+			my_file = out_folder + "variance_vmax.txt";
 			out_var_gene_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_var_gene_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "delta_v_ml.txt";
+			my_file = out_folder + "delta_vmax.txt";
 			out_delta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_delta_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-			my_file = out_subfolder + "d_delta_v_ml.txt";
+			my_file = out_folder + "d_delta_vmax.txt";
 			out_ddelta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
 			if(out_ddelta_v_ml == NULL){
 				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
 				exit(EXIT_FAILURE);
 			}
 
-
-			// output cell name
-			for(c=0;c<C;c++){
-				fprintf(out_cell_v_ml,"%s\n",cell_names[c].c_str());
+			if(!post_v_output){
+				for(c=0;c<C;c++){
+					fprintf(out_cell,"%s\n",cell_names[c].c_str());
+				}
 			}
 			for(g=0; g<G; ++g){
 				// Write gene names
-				fprintf(out_gene_v_ml,"%s\n",gene_names[g].c_str());
+				if(!post_v_output){
+					fprintf(out_gene,"%s\n",gene_names[g].c_str());
+				}
 				//print best fit to file : mu, delta
 				// Print diagonal of invM : variance of mu, delta
 				fprintf(out_mu_v_ml,"%lf\n",mu_v_ml[g]);
