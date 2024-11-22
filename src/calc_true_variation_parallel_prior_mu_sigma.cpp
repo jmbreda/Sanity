@@ -493,16 +493,13 @@ int main (int argc, char** argv){
 				exit(EXIT_FAILURE);
 			}
 
-			if(!post_v_output){
-				for(c=0;c<C;c++){
-					fprintf(out_cell,"%s\n",cell_names[c].c_str());
-				}
+
+			for(c=0;c<C;c++){
+				fprintf(out_cell,"%s\n",cell_names[c].c_str());
 			}
 			for(g=0; g<G; ++g){
 				// Write gene names
-				if(!post_v_output){
-					fprintf(out_gene,"%s\n",gene_names[g].c_str());
-				}
+				fprintf(out_gene,"%s\n",gene_names[g].c_str());
 				//print best fit to file : mu, delta
 				// Print diagonal of invM : variance of mu, delta
 				fprintf(out_mu_v_ml,"%lf\n",mu_v_ml[g]);
