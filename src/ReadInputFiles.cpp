@@ -141,7 +141,7 @@ void ReadUMIcountMatrix(string in_file, double **n_c, double *N_c, double *n, st
             /****go to the next in the list of words****/
             token = strtok(NULL," \t,");
             if(token != NULL){
-                n_c_tmp[c] = atoi(token);
+                n_c_tmp[c] = stod(token);
                 n_tmp += n_c_tmp[c];// total count this gene
                 N_c[c] += n_c_tmp[c];// total count for this cell
             }else{
@@ -328,7 +328,7 @@ void ReadMTX(string mtx_file, string gene_name_file, string cell_name_file, doub
 		token = strtok(NULL," ");
 		c = atoi(token);
 		token = strtok(NULL," ");
-		count = atoi(token);
+		count = stod(token);
 
 		g = g-1;
 		c = c-1;
