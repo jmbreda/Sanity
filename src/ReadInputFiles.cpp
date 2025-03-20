@@ -55,7 +55,7 @@ void Get_G_C_UMIcountMatrix(string in_file, int &N_rows, int &G, int &C, int N_c
             /****go to the next in the list of words****/
             token = strtok(NULL," \t,");
             if(token != NULL){
-                n += atoi(token);/**total count this gene**/
+                n += stod(token);/**total count this gene**/
             }else{
                 fprintf(stderr,"Error: not enough fields on line number %d:\n%s\n",g,sc);
                 exit(EXIT_FAILURE);
@@ -193,10 +193,10 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int,int> &gene
 		}else{
 			token = strtok(retval," ");
 			// Highest number of genes expressed and not
-			N_rows = atoi(token);
+			N_rows = stoi(token);
 			token = strtok(NULL," \t");
 			// Number of cells
-			C = atoi(token);
+			C = stoi(token);
 			break;
 		}
 	}
@@ -212,7 +212,7 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int,int> &gene
     while ( (retval = fgets(ss,1024,infp) ) != NULL) {
 		// Read values gene idx and add as expressed
 		token = strtok(retval," \t");
-		g = atoi(token);
+		g = stoi(token);
 		g=g-1;
 		// Update gene_idx map and count gene if not seen before
 		if( ! expressed_genes[g] ){
@@ -324,9 +324,9 @@ void ReadMTX(string mtx_file, string gene_name_file, string cell_name_file, doub
     while ( (retval = fgets(ss,1024,infp) ) != NULL) {
 		// Read values gene idx and add as expressed
 		token = strtok(retval," ");
-		g = atoi(token);
+		g = stoi(token);
 		token = strtok(NULL," ");
-		c = atoi(token);
+		c = stoi(token);
 		token = strtok(NULL," ");
 		count = stod(token);
 
