@@ -125,7 +125,7 @@ int main (int argc, char** argv){
 	//
 	double usage_bytes = 1.1*(4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
 	if (max_v_output && post_v_output){
-		usage_bytes *= 2;
+		usage_bytes *= 4;
 	}
 
 	cerr << std::setprecision(3);
