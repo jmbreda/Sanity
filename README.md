@@ -11,7 +11,7 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 
 ### Reproducibility
-The raw UMI count and normalized datasets mentionned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DO I](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
+The raw UMI count and normalized datasets mentioned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DO I](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
 
 The scripts used for running the bechmarked normalization methods and for making the figures of the preprint are in the reproducibility folder.
 
@@ -31,6 +31,7 @@ The scripts used for running the bechmarked normalization methods and for making
 * (optional) Destination folder (`'path/to/output/folder'`, default: `pwd`)
 * (optional) Number of threads (integer, default: `4`)
 * (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
+* (optional) Print additional output (with suffix "_vmax.txt") obtained using the maximum posterior estimate for the gene-variances $v_g$, rather than integrating over the posterior of $v_g$. This is the most correct output when one wants to reconstruct the likelihood expression from the posterior estimates, for example in the distance-calculation script. (string, `'true', 'false', '1', '0'` or `'only_max_output'`, default: `false`)
 * (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
 * (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 * (optional) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
@@ -52,6 +53,9 @@ The scripts used for running the bechmarked normalization methods and for making
   | Gene 2 | 0.315551 | 0.325912 | 0.301861 |
   | ... | |
 
+* (optional) log_transcription_quotients_vmax.txt: Analogous file to log_transcription_quotients.txt but reporting the LTQs obtained by using the maximum-posterior gene-variance $v_g$. This file is only produced when `-max v` is set to `true` or `only_max_output`.
+* (optional) ltq_error_bars_vmax.txt: See the description for log_transcription_quotients_vmax.txt.
+
 ## Extended output (optional)
 
 * mu.txt : Estimated average LTQ *&mu;<sub>g</sub>* of each gene *g* (averaged over all cells)
@@ -59,6 +63,7 @@ The scripts used for running the bechmarked normalization methods and for making
 * variance.txt : Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file log_transcription_quotients.txt. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly adviced to use the results in this file.
 * delta.txt : Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*.
 * d_delta.txt : Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*.
+* ..._vmax.txt: All the above files will be obtained with a `_vmax.txt`-suffix when `-max_v` is set to `true` or `only_max_output`.
 * likelihood.txt : This file encodes the posterior distribution of each gene’s true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains the matrix with posterior values *P<sub>gb</sub>* for each gene *g* and each bin *b*.
 
   | | | | | |
@@ -80,6 +85,7 @@ The scripts used for running the bechmarked normalization methods and for making
 	-d,--destination	Specify the destination path (default: pwd)
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
 	-e,--extended_output	Option to print extended output (default: false, choice: false,0,true,1)
+	-max_v,--get_output_for_maxlik_variance	Option to obtain additional output obtained for maximum-posterior gene-variance (default: false, choice: false,0,true,1,only_max_output)
 	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.001)
 	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 50)
 	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 160)
