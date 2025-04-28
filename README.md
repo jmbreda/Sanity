@@ -53,7 +53,7 @@ The scripts used for running the bechmarked normalization methods and for making
   | Gene 2 | 0.315551 | 0.325912 | 0.301861 |
   | ... | |
 
-* (optional) log_transcription_quotients_vmax.txt: Analogous file to log_transcription_quotients.txt but reporting the LTQs obtained by using the maximum-posterior gene-variance $v_g$. This file is only produced when `-max v` is set to `true` or `only_max_output`.
+* (optional) log_transcription_quotients_vmax.txt: Analogous file to log_transcription_quotients.txt but reporting the LTQs obtained by using the maximum-posterior gene-variance $v_g$. This file is only produced when `-max v` is set to `true` or `1`.
 * (optional) ltq_error_bars_vmax.txt: See the description for log_transcription_quotients_vmax.txt.
 
 ## Extended output (optional)
@@ -63,7 +63,7 @@ The scripts used for running the bechmarked normalization methods and for making
 * variance.txt : Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file log_transcription_quotients.txt. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly adviced to use the results in this file.
 * delta.txt : Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*.
 * d_delta.txt : Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*.
-* ..._vmax.txt: All the above files will be obtained with a `_vmax.txt`-suffix when `-max_v` is set to `true` or `only_max_output`.
+* ..._vmax.txt: All the above files will be obtained with a `_vmax.txt`-suffix when `-max_v` is set to `true` or `1`.
 * likelihood.txt : This file encodes the posterior distribution of each gene’s true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains the matrix with posterior values *P<sub>gb</sub>* for each gene *g* and each bin *b*.
 
   | | | | | |
