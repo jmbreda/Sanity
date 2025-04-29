@@ -808,14 +808,14 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 	if ( no_norm_str == "true" || no_norm_str == "1" )
 		no_norm = true;
 	
-	if ( max_v_str == "true" || max_v_str == "1" ){
-		max_v_output = true;
-		post_v_output = true;
-		}
-	else if (max_v_str == "only_max_output"){
+	if ( max_v_str == "true" || max_v_str == "1" || max_v_str == "only_max_output"){
 		max_v_output = true;
 		post_v_output = false;
 		}
+	// else if (max_v_str == "only_max_output"){
+	// 	max_v_output = true;
+	// 	post_v_output = false;
+	// 	}
 
 
 	// Get input file extension
@@ -857,8 +857,7 @@ static void show_usage(void)
          << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
          << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
 		 << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
-		 << "\t-max_v,--get_output_for_maxlik_variance\tOption to also output all results for the prior variance (v_g) that maximizes the likelihood, \n\t"
-		 <<	"\ti.e., without integrating over the posterior for v_g.\n\t "
-		 <<	"\tChoose 'only_max_output' to get only output for the maximum posterior v_g. (default: false, choice: false,0,true,1,only_max_output)\n";
+		 << "\t-max_v,--get_output_for_maxlik_variance\tOption to get the results for the prior variance (v_g) that maximizes the likelihood, \n\t"
+		 <<	"\ti.e., without integrating over the posterior for v_g. (default: false, choice: false,0,true,1)\n";
 	exit(0);
 }
