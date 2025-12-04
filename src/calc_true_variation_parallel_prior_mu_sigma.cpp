@@ -218,14 +218,18 @@ int main (int argc, char** argv){
 
 	logging_debug("Fit gene expression levels");
 	const clock_t begin = clock();
+	std::vector<double> wait_times(G, 0.0);
 	#pragma omp parallel num_threads(N_threads)
 	{
 		#pragma omp for schedule(dynamic) ordered
 		for (int g = 0; g < G; ++g) {
 			std::vector<double> n_c_g = fetch_row(g, in_file, in_file_extension, mtx_rows, tsv_offsets, C);
 			RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, max_v_output, post_v_output);
+			double t_attempt = omp_get_wtime();
 			#pragma omp ordered
 			{
+				double t_enter = omp_get_wtime();
+            	wait_times[g] = t_enter - t_attempt;
                           if (g == (3 * N_threads - 1)) {
 			                        clock_t end = clock();
                   	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
@@ -323,6 +327,25 @@ int main (int argc, char** argv){
 			}
 		}
 	}
+
+
+// --- Now compute statistics sequentially ---
+double total = 0.0;
+double max_wait = 0.0;
+int count = 0;
+
+for (int g = 0; g < G; ++g) {
+    total += wait_times[g];
+    if (wait_times[g] > max_wait)
+        max_wait = wait_times[g];
+    count++;
+}
+
+double avg_wait = (count > 0 ? total / count : 0.0);
+
+printf("Average ordered wait time: %f seconds\n", avg_wait);
+printf("Maximum ordered wait time: %f seconds\n", max_wait);
+printf("Total ordered wait time: %f seconds\n", total);
 
 	// save cell names
 	for(c=0;c<C;c++){
