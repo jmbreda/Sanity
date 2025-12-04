@@ -94,7 +94,7 @@ int main (int argc, char** argv){
 
 	if (in_file_extension == "mtx"){
 		Get_G_C_MTX(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n);
-		gene_names = Read_GeneNames(gene_name_file);
+		gene_names = Read_GeneNames(gene_name_file, gene_idx, G);
 		cell_names = Read_CellNames(cell_name_file);
 		logging_debug("There were " + std::to_string(N_rows) + " rows");
 	} else {

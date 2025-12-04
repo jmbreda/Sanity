@@ -324,6 +324,137 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int,int> &gene
 	return;
 }
 
+void Get_G_C_MTX_2(string in_file, int &N_rows, int &G, int &C, map<int,int> &gene_idx, vector<RowBlock> &mtx_rows, vector<double> &N_c, vector<double> &n){
+
+	FILE * infp;
+	char ss[1024];
+	char * retval = NULL;
+	char * token = NULL;
+
+	infp = fopen(in_file.c_str(), "r");
+	if (infp == NULL){
+		fprintf(stderr,"Cannot open input file %s\n",in_file.c_str());
+		exit(EXIT_FAILURE);
+	}
+
+	// Read header: first non-comment line contains N_rows C and (ignored third value)
+	while ( (retval = fgets(ss,1024,infp)) != NULL ){
+		if ( retval[0] == '%' ){
+			continue;
+		}else{
+			token = strtok(retval," \t");
+			if (!token){
+				fprintf(stderr,"Error: invalid MTX header in %s\n", in_file.c_str());
+				fclose(infp);
+				exit(EXIT_FAILURE);
+			}
+			N_rows = stoi(token);
+			token = strtok(NULL," \t");
+			if (!token){
+				fprintf(stderr,"Error: invalid MTX header (missing columns) in %s\n", in_file.c_str());
+				fclose(infp);
+				exit(EXIT_FAILURE);
+			}
+			C = stoi(token);
+			break;
+		}
+	}
+
+	// Prepare accumulators
+	vector<char> expressed_genes(N_rows, 0);
+	vector<RowBlock> row_blocks_tmp(N_rows);
+	vector<double> gene_totals(N_rows, 0.0);
+	vector<double> cell_totals(static_cast<size_t>(C), 0.0);
+	for (int g=0; g<N_rows; ++g){
+		row_blocks_tmp[g].offset = -1;
+		row_blocks_tmp[g].nnz = 0;
+	}
+
+	// Ensure file sorted by row index
+	int last_row_index = -1; // zero-based
+	G = 0;
+	while ( true ){
+		long offset = ftell(infp);
+		retval = fgets(ss,1024,infp);
+		if (retval == NULL){
+			break;
+		}
+		if ( retval[0] == '%' || retval[0] == '\n' || retval[0] == '\0'){
+			continue;
+		}
+
+		token = strtok(retval, " \t\r\n");
+		if (!token){
+			continue;
+		}
+		int g_idx = stoi(token) - 1; // convert to zero-based
+		if ( g_idx < 0 || g_idx >= N_rows ){
+			fprintf(stderr,"Error: gene index %d out of range in MTX file %s\n", g_idx+1, in_file.c_str());
+			fclose(infp);
+			exit(EXIT_FAILURE);
+		}
+
+		// Sorted-by-row check: smaller row index cannot follow larger
+		if (last_row_index > g_idx){
+			fprintf(stderr,"Error: MTX file %s is not sorted by row. Row %d appears after row %d.\n", in_file.c_str(), g_idx+1, last_row_index+1);
+			fclose(infp);
+			exit(EXIT_FAILURE);
+		}
+		last_row_index = g_idx;
+
+		token = strtok(NULL, " \t\r\n");
+		if (!token){
+			fprintf(stderr,"Error: missing cell index for gene %d in MTX file %s\n", g_idx+1, in_file.c_str());
+			fclose(infp);
+			exit(EXIT_FAILURE);
+		}
+		int c_idx = stoi(token) - 1;
+		if ( c_idx < 0 || c_idx >= C ){
+			fprintf(stderr,"Error: cell index %d out of range in MTX file %s\n", c_idx+1, in_file.c_str());
+			fclose(infp);
+			exit(EXIT_FAILURE);
+		}
+
+		token = strtok(NULL, " \t\r\n");
+		if (!token){
+			fprintf(stderr,"Error: missing count for gene %d cell %d in MTX file %s\n", g_idx+1, c_idx+1, in_file.c_str());
+			fclose(infp);
+			exit(EXIT_FAILURE);
+		}
+		double count = stod(token);
+
+		if (!expressed_genes[g_idx]){
+			expressed_genes[g_idx] = 1;
+			G++;
+			row_blocks_tmp[g_idx].offset = static_cast<long long>(offset);
+			row_blocks_tmp[g_idx].nnz = 1;
+		}else{
+			row_blocks_tmp[g_idx].nnz += 1;
+		}
+		gene_totals[g_idx] += count;
+		cell_totals[static_cast<size_t>(c_idx)] += count;
+	}
+	fclose(infp);
+
+	// Build gene_idx map, mtx_rows blocks and totals n (only for non-zero genes)
+	mtx_rows.clear();
+	mtx_rows.resize(G);
+	n.assign(static_cast<size_t>(G), 0.0);
+	int cur = 0;
+	for (int g=0; g<N_rows; ++g){
+		if (expressed_genes[g]){
+			gene_idx[g] = cur;
+			mtx_rows[cur] = row_blocks_tmp[g];
+			n[static_cast<size_t>(cur)] = gene_totals[g];
+			cur++;
+		}else{
+			gene_idx[g] = -1;
+		}
+	}
+	N_c.assign(cell_totals.begin(), cell_totals.end());
+
+	return;
+}
 void ReadMTX(string mtx_file, string gene_name_file, string cell_name_file, double **n_c, double *N_c, double *n, string *gene_names, string *cell_names, int N_rows, int G, int C, map<int,int> gene_idx){
 
 	// declare variables
@@ -454,7 +585,9 @@ std::vector<std::string> Read_CellNames(const std::string &filename){
 	return cell_names;
 }
 
-std::vector<std::string> Read_GeneNames(const std::string &filename){
+std::vector<std::string> Read_GeneNames(const std::string &filename, 
+									   const std::map<int,int> &gene_idx,
+									   const int G){
 	std::vector<std::string> gene_names;
 	if (filename == "none" || filename.empty()){
 		return gene_names;
@@ -465,6 +598,7 @@ std::vector<std::string> Read_GeneNames(const std::string &filename){
 		exit(EXIT_FAILURE);
 	}
 	std::string line;
+	int gene_index = 0;
 	while (std::getline(input, line)){
 		if (line.empty() || line[0] == '%'){
 			continue;
@@ -472,7 +606,18 @@ std::vector<std::string> Read_GeneNames(const std::string &filename){
 		if (!line.empty() && line.back() == '\r'){
 			line.pop_back();
 		}
-		gene_names.push_back(line);
+		// Only add gene if its index in gene_idx is not -1
+		auto it = gene_idx.find(gene_index);
+		if (it != gene_idx.end() && it->second != -1){
+			gene_names.push_back(line);
+		}
+		gene_index++;
+	}
+	// Check that the length of gene_names equals G
+	if (static_cast<int>(gene_names.size()) != G){
+		fprintf(stderr,"Error: Number of gene names (%d) does not match expected G (%d)\n", 
+				static_cast<int>(gene_names.size()), G);
+		exit(EXIT_FAILURE);
 	}
 	return gene_names;
 }

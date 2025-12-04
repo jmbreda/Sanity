@@ -19,17 +19,17 @@ Digamma_Trigamma.o: Digamma_Trigamma.cpp Digamma_Trigamma.h
 	$(CC) $(CFLAGS) -c Digamma_Trigamma.cpp
 
 
-#Sanity_distance: compute_distance.o
-#	$(CC) $(CFLAGS) -o ../bin/Sanity_distance compute_distance.o
+Sanity_distance: compute_distance.o
+	$(CC) $(CFLAGS) -o ../bin/Sanity_distance compute_distance.o
 
-#compute_distance.o: compute_distance.cpp
-#	$(CC) $(CFLAGS) -c compute_distance.cpp
+compute_distance.o: compute_distance.cpp
+	$(CC) $(CFLAGS) -c compute_distance.cpp
 
-#Sanity_gene_correlation:  compute_gene_correlations.o
-#	$(CC) $(CFLAGS) -o ../bin/Sanity_gene_correlation compute_gene_correlations.o
+Sanity_gene_correlation:  compute_gene_correlations.o
+	$(CC) $(CFLAGS) -o ../bin/Sanity_gene_correlation compute_gene_correlations.o
 
-#compute_gene_correlation.o: compute_gene_correlations.cpp
-#	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
+compute_gene_correlation.o: compute_gene_correlations.cpp
+	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
 
 clean:
 	rm -f *.o
