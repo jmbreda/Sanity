@@ -4,3 +4,4 @@ src/FukushimaLambertW.o
 src/ReadInputFiles.o
 src/calc_true_variation_parallel_prior_mu_sigma.o
 .vscode/
+.DS_Store
