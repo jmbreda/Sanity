@@ -4,9 +4,12 @@
 #include <ctype.h>
 #include <string>
 #include <fstream>
+#include <vector>
 #include <omp.h>
 #include <ctime>
 #include <iomanip>
+#include <chrono>
+#include <sstream>
 
 #include <sys/stat.h>  // For mkdir on Unix-like systems
 #ifdef _WIN32
@@ -21,11 +24,43 @@ string VERSION("1.1");
 
 using namespace std;
 
+struct RowComputation {
+	double mu;
+	double var_mu;
+	std::vector<double> delta;
+	std::vector<double> var_delta;
+	double var_gene;
+	std::vector<double> lik;
+	double var_gene_v_ml;
+	double mu_v_ml;
+	double var_mu_v_ml;
+	std::vector<double> delta_v_ml;
+	std::vector<double> var_delta_v_ml;
+};
+
 /***Function declarations ****/
-void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik, double &v_ml, double &mu_v_ml, double &var_mu_v_ml, double *delta_v_ml, double *var_delta_v_ml);
+RowComputation get_gene_expression_level(const vector<double>& n_c, const vector<double>& N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, bool max_v_output, bool post_v_output);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
 void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_charm, bool &no_norm, bool &max_v_output, bool &post_v_output);
 static void show_usage(void);
+std::vector<double> fetch_row(int g, const std::string& in_file, const std::string& in_file_extension, const std::vector<RowBlock>& mtx_rows, const std::vector<std::streampos>& tsv_offsets, const int& C);
+
+// Function to print a timestamped message to stderr
+void logging_debug(const std::string& msg) {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+    std::tm buf;
+#ifdef _WIN32
+    localtime_s(&buf, &in_time_t);
+#else
+    localtime_r(&in_time_t, &buf);
+#endif
+    std::cerr << "[" << std::put_time(&buf, "%Y-%m-%d %H:%M:%S");
+    std::cerr << ',' << std::setw(3) << std::setfill('0') << ms.count() << "] ";
+    std::cerr << msg << std::endl;
+}
 
 int main (int argc, char** argv){
 	string in_file("");
@@ -50,45 +85,29 @@ int main (int argc, char** argv){
 	int N_rows;
 	// Gene idx map for mtx
 	map<int,int> gene_idx;
+	vector<RowBlock> mtx_rows;
+	vector<std::streampos> tsv_offsets;
+	vector<double> N_c; // total counts per cell
+	vector<double> n; // total counts per gene
+	vector<string> gene_names;
+	vector<string> cell_names;
 
 	if (in_file_extension == "mtx"){
-		Get_G_C_MTX(in_file, N_rows, G, C, gene_idx);
-		fprintf(stderr, "There were %d rows\n", N_rows);
+		Get_G_C_MTX(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n);
+		gene_names = Read_GeneNames(gene_name_file);
+		cell_names = Read_CellNames(cell_name_file);
+		logging_debug("There were " + std::to_string(N_rows) + " rows");
 	} else {
-		Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, N_char);
-		fprintf(stderr, "There were %d rows\n", N_rows);
+		Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, N_char, tsv_offsets, N_c, n, cell_names, gene_names);
+		logging_debug("There were " + std::to_string(N_rows) + " rows");
 	}
-	fprintf(stderr, "There were %d genes and %d cells\n",G,C);
+	logging_debug("There were " + std::to_string(G) + " genes and " + std::to_string(C) + " cells");
 
 	int g, c, k;
-	// Count per cell
-	double *N_c = new double [C];
-    for(c=0;c<C;++c){
-        N_c[c] = 0;
-    }
-	// Count per gene
-	double *n = new double [G];
-	// count per gene and per cell
-    double **n_c = new double *[G];
-    for(g=0;g<G;++g){
-        // n_c[g] = new double [C];
-		n_c[g] = new double[C]();
-		n[g] = 0;
-	}
-	// Gene and cell names
-	string *gene_names = new string [G];
-	string *cell_names = new string [C];
-
-	// Read input file
-	if (in_file_extension == "mtx"){
-		ReadMTX(in_file, gene_name_file, cell_name_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, gene_idx);
-	} else {
-		ReadUMIcountMatrix(in_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, N_char);
-	}
 
 	// Remove the total UMI correction if no cell size normalization option is true
 	if (no_norm){
-		cerr << "No cell size normalization will be performed\n";
+		logging_debug("No cell size normalization will be performed");
 
 		// get mean count per cell
 		double mean_N_c = 0;
@@ -104,432 +123,232 @@ int main (int argc, char** argv){
 	}
 
 	// alpha and beta of gamma prior on mu
-	double a;
-	double b;
-	a = 1.0;
-	b = 0.0;
-
-	// Estimage memory usage
-	double size_of_double = 8;
-
-	// main double variables:
-	// G-array : n, mu, var_mu, var_gene
-	// C-array : N_c
-	// GxC array : n_c, delta, var_delta
-	// Gxnumbin array : lik
-	//
-	// parallel loop variables:
-	// C-array: f, sig2_delta_c, sig2_delta_num, sig2_delta_den2, Q
-	// numbin-array: mu_v
-	// Cxnumbin-array: delta_v, sig2_delta_v
-	//
-	//
-	double usage_bytes = 1.1*(4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
-	if (max_v_output && post_v_output){
-		usage_bytes *= 4;
-	}
-
-	cerr << std::setprecision(3);
-	cerr << "Estimated memory usage: ";
-	if ( usage_bytes > 1e9 ){
-		cerr << usage_bytes/1e9 << " GB\n";
-	}else if ( usage_bytes > 1e6 ){
-		cerr << usage_bytes/1e6 << " MB\n";
-	}else{
-		cerr << usage_bytes/1e3 << " KB\n";
-	}
-    // Declare output variables
-	double *mu = new double [G];
-	double *var_mu = new double [G];
-	double *var_gene = new double [G];
-	
-	double **delta = nullptr;
-	double **var_delta = nullptr;
-	if (post_v_output){
-		delta = new double *[G];
-		var_delta = new double *[G];
-		for( g=0; g<G; ++g){
-			delta[g] = new double [C];
-			var_delta[g] = new double [C];
-		}
-	}
-	double v;
+	double a = 1.0;
+	double b = 0.0;
 	double deltav = log(vmax/vmin)/((double) numbin-1);
-	double **lik = new double *[G];
-	for(g=0;g<G;g++){
-		lik[g] = new double [numbin];
-		for(k=0;k<numbin;k++)
-			lik[g][k] = -1.0;
+
+	/*
+	for (int g = 0; g < G; ++g) {
+			std::vector<double> n_c_g = fetch_row(g, in_file, in_file_extension, mtx_rows, tsv_offsets, C);
+			RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, max_v_output, post_v_output);
+			cout << g << '\n';
 	}
+	*/
+	
+	//open files for writing
+	std::ofstream out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene, \
+		out_delta, out_ddelta, out_lik, out_exp_lev_v_ml, out_d_exp_lev_v_ml, \
+		out_mu_v_ml, out_dmu_v_ml, out_var_gene_v_ml, out_delta_v_ml, out_ddelta_v_ml,
+		out_gene, out_cell;
 
-	// Declare output variables for when we want to store results for maximum likelihood estimate for v_g
-	double *var_gene_v_ml = nullptr;
-	double *mu_v_ml = nullptr;
-	double *var_mu_v_ml = nullptr;
-	double **delta_v_ml = nullptr;
-	double **var_delta_v_ml = nullptr;
-	if (max_v_output){
-		var_gene_v_ml = new double [G];
-		mu_v_ml = new double [G];
-		var_mu_v_ml = new double [G];
-		delta_v_ml = new double *[G];
-		var_delta_v_ml = new double *[G];
-		for( g=0; g<G; ++g){
-			delta_v_ml[g] = new double [C];
-			var_delta_v_ml[g] = new double [C];
-		}
-	}
+	if (post_v_output) {
+		std::ofstream(out_folder + "log_transcription_quotients.txt", std::ios::trunc).close();
+		std::ofstream(out_folder + "ltq_error_bars.txt", std::ios::trunc).close();
 
-	double* row_delta = nullptr;
-	double* row_var_delta = nullptr;
-	double* row_delta_v_ml = nullptr;
-	double* row_var_delta_v_ml = nullptr;
-
-	// Estimate running time:
-	int N_est = 10;
-	if ( N_est < G ){
-		// start timer
-		clock_t begin = clock();
-
-		// run on N_est genes
-		for(g=0;g<N_est;++g){
-			if (post_v_output){
-				row_delta = delta[g];
-				row_var_delta = var_delta[g];
-			}
-			if (max_v_output){
-				row_delta_v_ml = delta_v_ml[g];
-				row_var_delta_v_ml = var_delta_v_ml[g];
-			}
-			get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],row_delta,row_var_delta,C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], row_delta_v_ml, row_var_delta_v_ml);
-		}
-
-		// stop timer
-		clock_t end = clock();
-		double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-		double estimated_running_time = elapsed_secs/N_est*(G-N_est)/N_threads;
-
-		// output esimated running time
-		cerr << "Estimated running time: ";
-		if ( estimated_running_time > 86400 ){
-			cerr << estimated_running_time/(3600*24) << " days ";
-		}else if ( estimated_running_time > 3600 ){
-			cerr << estimated_running_time/3600 << " hours ";
-		}else if ( estimated_running_time > 60 ){
-			cerr << estimated_running_time/60 << " minutes ";
-		}else{
-			cerr << estimated_running_time << " seconds ";
-		}
-		cerr << "(Excluding reading/writing operations.)\n";
-        }else{
-		N_est = 0;
-	}
-	cerr << std::setprecision(6);
-	cout << std::setprecision(6);
-
-   	// Get Loglikelihood :
-	cerr << "Fit gene expression levels\n";
-	int g_print(G/(N_threads*40));
-    #pragma omp parallel for num_threads(N_threads)
-	for(g=N_est;g<G;++g){
-		if (g == g_print){
-			fprintf(stderr, "First process now fitting gene %d out of %d.\n", g, (int) G/N_threads);
-			g_print *= 2;
-		}
-
-		if (post_v_output){
-			row_delta = delta[g];
-			row_var_delta = var_delta[g];
-		}
-		if (max_v_output){
-			row_delta_v_ml = delta_v_ml[g];
-			row_var_delta_v_ml = var_delta_v_ml[g];
-		}
-		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],row_delta,row_var_delta,C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], row_delta_v_ml, row_var_delta_v_ml);
-	}
-
-	// Create subfolder if results need to be stored that take the maximum posterior value for v_g
-	// string out_subfolder = "";
-	// if (max_v_output){
-	// 	out_subfolder = out_folder + "/using_max_posterior_v_g/";
-	// 	#ifdef _WIN32
-	// 		_mkdir(out_subfolder.c_str());  // Use _mkdir on Windows
-	// 	#else
-	// 		mkdir(out_subfolder.c_str(), 0777);  // Use mkdir on Unix-like systems with full permissions
-	// 	#endif
-	// }
-
-	// Write output files
-
-	cerr << "Print output\n";
-	// Write log expression table and error bars table
-	if (post_v_output){
-		ofstream out_exp_lev, out_d_exp_lev, out_exp_lev_v_ml, out_d_exp_lev_v_ml;
-		out_exp_lev.open(out_folder + "log_transcription_quotients.txt",ios::out);
-		out_d_exp_lev.open(out_folder + "ltq_error_bars.txt",ios::out);
-
+		out_exp_lev.open(out_folder + "log_transcription_quotients.txt", std::ios::app);
+		out_d_exp_lev.open(out_folder + "ltq_error_bars.txt", std::ios::app);
+		
 		out_exp_lev << "GeneID";
 		out_d_exp_lev << "GeneID";
 		for(c=0;c<C;c++){
-			out_exp_lev << "\t" << cell_names[c].c_str();
-			out_d_exp_lev << "\t" << cell_names[c].c_str();
-		}
-		out_exp_lev << "\n";
-		out_d_exp_lev << "\n";
-
-		for(g=0;g<G;g++){
-		out_exp_lev << gene_names[g].c_str();
-		out_d_exp_lev << gene_names[g].c_str();
-			for(c=0;c<C;c++){
-				out_exp_lev << "\t" << mu[g] + delta[g][c];
-				out_d_exp_lev << "\t" << sqrt( var_mu[g] + var_delta[g][c] );
-			}
-			if ( g != G-1 ){
-				out_exp_lev << "\n";
-				out_d_exp_lev << "\n";
-			}
-		}
-		out_exp_lev.close();
-		out_d_exp_lev.close();
-
+            out_exp_lev << "\t" << cell_names[c].c_str();
+            out_d_exp_lev << "\t" << cell_names[c].c_str();
+        }
+        out_exp_lev << "\n";
+        out_d_exp_lev << "\n";
 		if ( print_extended_output ){
+			std::ofstream(out_folder + "geneID.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "cellID.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "mu.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "d_mu.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "variance.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "delta.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "d_delta.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "likelihood.txt", std::ios::trunc).close();
 
-			// Compute variance : \int v*p(v) dv
-			for(g=0; g<G; ++g){
-				var_gene[g] = 0.0;
-				for(k=0;k<numbin;++k){
-					v = vmin * exp(deltav*k);
-					var_gene[g] += v*lik[g][k];
-				}
-			}
+			out_gene.open(out_folder + "geneID.txt", std::ios::app);
+			out_cell.open(out_folder + "cellID.txt", std::ios::app);
+			out_mu.open(out_folder + "mu.txt", std::ios::app);
+			out_dmu.open(out_folder + "d_mu.txt", std::ios::app);
+			out_var_gene.open(out_folder + "variance.txt", std::ios::app);
+			out_delta.open(out_folder + "delta.txt", std::ios::app);
+			out_ddelta.open(out_folder + "d_delta.txt", std::ios::app);
+			out_lik.open(out_folder + "likelihood.txt", std::ios::app);
 
-			cerr << "Print extended output\n";
-			string my_file;
-			FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_var_gene, *out_delta, *out_ddelta;
-			// output files
-			my_file = out_folder + "geneID.txt";
-			out_gene = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_gene == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "cellID.txt";
-			out_cell = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_cell == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "mu.txt";
-			out_mu = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_mu == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "d_mu.txt";
-			out_dmu = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_dmu == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "variance.txt";
-			out_var_gene = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_var_gene == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "delta.txt";
-			out_delta = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_delta == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "d_delta.txt";
-			out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_ddelta == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			// output cell name
-			for(c=0;c<C;c++){
-				fprintf(out_cell,"%s\n",cell_names[c].c_str());
-			}
-			for(g=0; g<G; ++g){
-				// Write gene names
-				fprintf(out_gene,"%s\n",gene_names[g].c_str());
-
-				//print best fit to file : mu, delta
-				// Print diagonal of invM : variance of mu, delta
-				fprintf(out_mu,"%lf\n",mu[g]);
-				fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
-				fprintf(out_var_gene,"%lf\n",var_gene[g]);
-				for(c=0;c<C-1;++c){
-					fprintf(out_delta,"%lf\t",delta[g][c]);
-					fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][c]));
-				}
-				fprintf(out_delta,"%lf\n",delta[g][C-1]);
-				fprintf(out_ddelta,"%lf\n",sqrt(var_delta[g][C-1]));
-			}
-			fclose(out_gene);
-			fclose(out_cell);
-			fclose(out_mu);
-			fclose(out_dmu);
-			fclose(out_var_gene);
-			fclose(out_delta);
-			fclose(out_ddelta);
-
-			// Write likelihood
-			ofstream out_lik;
-			out_lik.open(out_folder + "likelihood.txt",ios::out);
-			// write v values of bins in loglikelihood
-			out_lik << "Variance\t";
-			for(k=0;k<(numbin-1);++k){
-				v = vmin*exp(deltav*k);
-				out_lik << v << "\t";
-			}
-			v = vmin*exp(deltav*(numbin-1));
-			out_lik << v << "\n";
-			for(g=0; g<G; ++g){
-				out_lik << gene_names[g] << "\t";
-				for(k=0;k<numbin;++k){
-					if(k<numbin-1){
-						out_lik << lik[g][k] << "\t";
-					}else{
-						out_lik << lik[g][k] << "\n";
-					}
-				}
-			}
-			out_lik.close();
+			out_lik << "Variance";
+			for(k=0;k<(numbin);++k){
+                out_lik << "\t" << vmin*exp(deltav*k);
+            }
+            out_lik << "\n";
 		}
 	}
-	
-	// Repeat very similar output code for when you want to output the results for max posterior v_g
-	if (max_v_output){
-		ofstream out_exp_lev_v_ml, out_d_exp_lev_v_ml;
-		out_exp_lev_v_ml.open(out_folder + "log_transcription_quotients_vmax.txt",ios::out);
-		out_d_exp_lev_v_ml.open(out_folder + "ltq_error_bars_vmax.txt",ios::out);
+	if (max_v_output) {
+		std::ofstream(out_folder + "log_transcription_quotients_vmax.txt", std::ios::trunc).close();
+		std::ofstream(out_folder + "ltq_error_bars_vmax.txt", std::ios::trunc).close();
 
+		out_exp_lev_v_ml.open(out_folder + "log_transcription_quotients_vmax.txt", std::ios::app);
+		out_d_exp_lev_v_ml.open(out_folder + "ltq_error_bars_vmax.txt", std::ios::app);
+		
 		out_exp_lev_v_ml << "GeneID";
 		out_d_exp_lev_v_ml << "GeneID";
 		for(c=0;c<C;c++){
-			out_exp_lev_v_ml << "\t" << cell_names[c].c_str();
-			out_d_exp_lev_v_ml << "\t" << cell_names[c].c_str();
-		}
-		out_exp_lev_v_ml << "\n";
-		out_d_exp_lev_v_ml << "\n";
-
-		for(g=0;g<G;g++){
-		out_exp_lev_v_ml << gene_names[g].c_str();
-		out_d_exp_lev_v_ml << gene_names[g].c_str();
-			for(c=0;c<C;c++){
-				out_exp_lev_v_ml << "\t" << mu_v_ml[g] + delta_v_ml[g][c];
-				out_d_exp_lev_v_ml << "\t" << sqrt( var_mu_v_ml[g] + var_delta_v_ml[g][c] );
-			}
-			if ( g != G-1 ){
-				out_exp_lev_v_ml << "\n";
-				out_d_exp_lev_v_ml << "\n";
-			}
-		}
-		out_exp_lev_v_ml.close();
-		out_d_exp_lev_v_ml.close();
-
+            out_exp_lev_v_ml << "\t" << cell_names[c].c_str();
+            out_d_exp_lev_v_ml << "\t" << cell_names[c].c_str();
+        }
+        out_exp_lev_v_ml << "\n";
+        out_d_exp_lev_v_ml << "\n";
 		if ( print_extended_output ){
-			cerr << "Print extended output\n";
-			string my_file;
-			FILE *out_gene, *out_cell;
-			FILE *out_mu_v_ml, *out_dmu_v_ml, *out_var_gene_v_ml, *out_delta_v_ml, *out_ddelta_v_ml;
-			if(!post_v_output){
-				my_file = out_folder + "geneID.txt";
-				out_gene = (FILE *) fopen(my_file.c_str(),"w");
-				if(out_gene == NULL){
-					fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-					exit(EXIT_FAILURE);
+			std::ofstream(out_folder + "geneID.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "cellID.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "mu_vmax.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "d_mu_vmax.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "variance_vmax.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "delta_vmax.txt", std::ios::trunc).close();
+			std::ofstream(out_folder + "d_delta_vmax.txt", std::ios::trunc).close();
+
+			out_gene.open(out_folder + "geneID.txt", std::ios::app);
+			out_cell.open(out_folder + "cellID.txt", std::ios::app);
+			out_mu_v_ml.open(out_folder + "mu_vmax.txt", std::ios::app);
+			out_dmu_v_ml.open(out_folder + "d_mu_vmax.txt", std::ios::app);
+			out_var_gene_v_ml.open(out_folder + "variance_vmax.txt", std::ios::app);
+			out_delta_v_ml.open(out_folder + "delta_vmax.txt", std::ios::app);
+			out_ddelta_v_ml.open(out_folder + "d_delta_vmax.txt", std::ios::app);
+		}	
+	}
+
+	logging_debug("Fit gene expression levels");
+	const clock_t begin = clock();
+	#pragma omp parallel num_threads(N_threads)
+	{
+		#pragma omp for schedule(dynamic) ordered
+		for (int g = 0; g < G; ++g) {
+			std::vector<double> n_c_g = fetch_row(g, in_file, in_file_extension, mtx_rows, tsv_offsets, C);
+			RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, max_v_output, post_v_output);
+			#pragma omp ordered
+			{
+                          if (g == (3 * N_threads - 1)) {
+			                        clock_t end = clock();
+                  	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+                  	double estimated_running_time = elapsed_secs/(3 * N_threads) *(G-3 * N_threads)/N_threads;
+ 
+                  	// output esimated running time
+                  	string estimated_running_time_str = "Estimated running time: ";
+                  	if ( estimated_running_time > 86400 ){
+						std::stringstream stream;
+						stream << std::fixed << std::setprecision(2) << estimated_running_time/(3600*24);
+                        estimated_running_time_str += stream.str() + " days ";
+                  	}else if ( estimated_running_time > 3600 ){
+						std::stringstream stream;
+						stream << std::fixed << std::setprecision(2) << estimated_running_time/3600;
+                        estimated_running_time_str += stream.str() + " hours ";
+                  	}else if ( estimated_running_time > 60 ){
+						std::stringstream stream;
+						stream << std::fixed << std::setprecision(2) << estimated_running_time/60;
+                        estimated_running_time_str += stream.str() + " minutes ";
+                  	}else{
+						std::stringstream stream;
+						stream << std::fixed << std::setprecision(2) << estimated_running_time;
+                        estimated_running_time_str += stream.str() + " seconds ";
+                  	}
+					logging_debug(estimated_running_time_str);
 				}
-
-				my_file = out_folder + "cellID.txt";
-				out_cell = (FILE *) fopen(my_file.c_str(),"w");
-				if(out_cell == NULL){
-					fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-					exit(EXIT_FAILURE);
+				if (g % 1000 == 0 && g > 0){
+                    logging_debug("Finished " \
+						+ std::to_string(g) + " genes out of " + std::to_string(G));
+                  }
+				if (post_v_output) {
+					out_exp_lev << gene_names[g];
+					out_d_exp_lev << gene_names[g];
+					for (c=0;c<C;c++){
+						out_exp_lev << "\t" << result.mu + result.delta[c];
+						out_d_exp_lev << "\t" << sqrt(result.var_mu + result.var_delta[c]);
+						if ( print_extended_output ){
+							out_delta << std::fixed << std::setprecision(6) << result.delta[c];
+							out_ddelta << std::fixed << std::setprecision(6) << sqrt(result.var_delta[c]);
+							if ( c < C-1 ) {
+								out_delta << "\t";
+								out_ddelta << "\t";	
+							}
+						}
+					}
+					out_exp_lev << "\n";
+					out_d_exp_lev << "\n";
+					if ( print_extended_output ){
+						out_delta << "\n";
+						out_ddelta << "\n";
+						// Write gene names
+						out_gene << gene_names[g].c_str() << "\n";
+						//print best fit to file : mu, delta
+						// Print diagonal of invM : variance of mu, delta
+						out_mu << std::fixed << std::setprecision(6) << result.mu << "\n";
+						out_dmu << std::fixed << std::setprecision(6) << sqrt(result.var_mu) << "\n";
+						out_var_gene << std::fixed << std::setprecision(6) << result.var_gene << "\n";
+						// Write likelihood
+						out_lik << gene_names[g];
+						for(k=0;k<numbin;++k){
+							out_lik << "\t" << result.lik[k];
+						}
+						out_lik << "\n";
+					}
+				}
+				if (max_v_output) {
+					out_exp_lev_v_ml << gene_names[g];
+					out_d_exp_lev_v_ml << gene_names[g];
+					for (c=0;c<C;c++){
+						out_exp_lev_v_ml << "\t" << result.mu_v_ml + result.delta_v_ml[c];
+						out_d_exp_lev_v_ml << "\t" << sqrt(result.var_mu_v_ml + result.var_delta_v_ml[c]);
+						if ( print_extended_output ){
+							out_delta_v_ml << std::fixed << std::setprecision(6) << result.delta_v_ml[c];
+							out_ddelta_v_ml << std::fixed << std::setprecision(6) << sqrt(result.var_delta_v_ml[c]);
+							if ( c < C-1 ) {
+								out_delta_v_ml << "\t";
+								out_ddelta_v_ml << "\t";	
+							}	
+						}
+					}
+					out_exp_lev_v_ml << "\n";
+					out_d_exp_lev_v_ml << "\n";
+					if ( print_extended_output ){
+						out_delta_v_ml << "\n";
+						out_ddelta_v_ml << "\n";
+						// Write gene names
+						out_gene << gene_names[g].c_str() << "\n";
+						//print best fit to file : mu, delta
+						// Print diagonal of invM : variance of mu, delta
+						out_mu_v_ml << std::fixed << std::setprecision(6) << result.mu_v_ml << "\n";
+						out_dmu_v_ml << std::fixed << std::setprecision(6) << sqrt(result.var_mu_v_ml) << "\n";
+						out_var_gene_v_ml << std::fixed << std::setprecision(6) << result.var_gene_v_ml << "\n";
+					}
 				}
 			}
-			my_file = out_folder + "mu_vmax.txt";
-			out_mu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_mu_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "d_mu_vmax.txt";
-			out_dmu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_dmu_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "variance_vmax.txt";
-			out_var_gene_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_var_gene_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "delta_vmax.txt";
-			out_delta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_delta_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "d_delta_vmax.txt";
-			out_ddelta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_ddelta_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-
-			for(c=0;c<C;c++){
-				fprintf(out_cell,"%s\n",cell_names[c].c_str());
-			}
-			for(g=0; g<G; ++g){
-				// Write gene names
-				fprintf(out_gene,"%s\n",gene_names[g].c_str());
-				//print best fit to file : mu, delta
-				// Print diagonal of invM : variance of mu, delta
-				fprintf(out_mu_v_ml,"%lf\n",mu_v_ml[g]);
-				fprintf(out_dmu_v_ml,"%lf\n",sqrt(var_mu_v_ml[g]));
-				fprintf(out_var_gene_v_ml,"%lf\n",var_gene_v_ml[g]);
-				for(c=0;c<C-1;++c){
-					fprintf(out_delta_v_ml,"%lf\t",delta_v_ml[g][c]);
-					fprintf(out_ddelta_v_ml,"%lf\t",sqrt(var_delta_v_ml[g][c]));
-				}
-				fprintf(out_delta_v_ml,"%lf\n",delta_v_ml[g][C-1]);
-				fprintf(out_ddelta_v_ml,"%lf\n", sqrt(var_delta_v_ml[g][C-1]));
-			}
-			fclose(out_mu_v_ml);
-			fclose(out_dmu_v_ml);
-			fclose(out_var_gene_v_ml);
-			fclose(out_delta_v_ml);
-			fclose(out_ddelta_v_ml);
 		}
 	}
+
+	// save cell names
+	for(c=0;c<C;c++){
+		out_cell << cell_names[c].c_str() << "\n";
+	}
+
+	logging_debug("Finished fitting all genes");
 
     return 0;
 }
 
-void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik, double &var_gene_v_ml, double &mu_v_ml, double &var_mu_v_ml, double *delta_v_ml, double *var_delta_v_ml){
+RowComputation get_gene_expression_level(const vector<double>& n_c, const vector<double>& N_c, \
+	double n, double vmin, double vmax, int C, int numbin, double a, double b, \
+	 bool max_v_output, bool post_v_output) {
 	int i, k;
     double beta,L,ldet,q,delsq,inv_v;
 	double *f = new double[C];
 	double **delta_v = new double *[numbin];
     double **sig2_delta_v = new double *[numbin];
+	std::vector<double> lik(numbin, -1.0);
+	std::vector<double> delta(C, 0.0), var_delta(C, 0.0), delta_v_ml(C, 0.0), var_delta_v_ml(C, 0.0);
+	double var_mu;
+	double var_gene_v_ml;
+	double mu_v_ml;
+	double var_mu_v_ml;
+
 	for(k=0;k<numbin;++k){
         delta_v[k] = new double [C];
         sig2_delta_v[k] = new double [C];
@@ -646,7 +465,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 	*/
 
 	// Average delta, and mu
-	mu = 0.0;
+	double mu = 0.0;
 	for(k=0;k<numbin;k++){
 		mu += lik[k]*mu_v[k];
 	}
@@ -657,7 +476,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		var_mu += lik[k]*(mu_v[k] - mu)*(mu_v[k] - mu);
 	}
 
-	if (delta != nullptr){
+	if (post_v_output){
 		// Compute <delta> = int p(v)*delta(v) dv
 		for(i=0;i<C;i++){
 			delta[i] = 0.0;
@@ -674,7 +493,7 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
 		}
 	}
 
-	if (delta_v_ml != nullptr){
+	if (max_v_output){
 		// Store the gene-variance that maximizes the likelihood:
 		var_gene_v_ml = vmin * exp(deltav*Lmax_ind);
 		// And then also the corresponding values for the LTQs etc.
@@ -699,7 +518,28 @@ void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, 
     delete[] sig2_delta_num;
     delete[] sig2_delta_den2;
 	delete[] mu_v;
-	return;
+
+	RowComputation result;
+	result.mu = mu;
+	result.var_mu = var_mu;
+	if (post_v_output){
+		result.delta = delta;
+		result.var_delta = var_delta;
+		result.var_gene = 0.0;
+ 		for(k=0;k<numbin;++k){
+			v = vmin * exp(deltav*k);
+			result.var_gene += v*lik[k];
+		}
+		result.lik = lik;
+	}
+	if (max_v_output){
+		result.var_gene_v_ml = var_gene_v_ml;
+		result.mu_v_ml = mu_v_ml;
+		result.var_mu_v_ml = var_mu_v_ml;
+		result.delta_v_ml = delta_v_ml;
+		result.var_delta_v_ml = var_delta_v_ml;
+	}
+	return result;
 }
 
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
@@ -820,7 +660,10 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 
 
 	// Get input file extension
-	in_file_extension = in_file.substr(in_file.find(".")+1,in_file.length());
+	in_file_extension = (in_file.size() >= 3) ? in_file.substr(in_file.size() - 3) : in_file;
+	for (char &ch : in_file_extension) {
+		ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+	}
 	cerr << "File type : " << in_file_extension << "\n";
 
 	// Get number of Character in first row, for iobuffer
@@ -861,4 +704,48 @@ static void show_usage(void)
 		 << "\t-max_v,--get_output_for_maxlik_variance\tOption to get the results for the prior variance (v_g) that maximizes the likelihood, \n\t"
 		 <<	"\ti.e., without integrating over the posterior for v_g. (default: false, choice: false,0,true,1)\n";
 	exit(0);
+}
+
+std::vector<double> fetch_row(int g, const std::string& in_file, const std::string& in_file_extension, const std::vector<RowBlock>& mtx_rows, const std::vector<std::streampos>& tsv_offsets, const int& C) {
+	std::vector<double> row_data(C, 0.0);
+
+	if (in_file_extension == "mtx") {
+		// Fetch from Matrix Market format
+		const RowBlock& row_block = mtx_rows[g];
+		std::ifstream stream(in_file, std::ios::in | std::ios::binary);
+        if (!stream) {
+            throw std::runtime_error("RowReader: cannot open MTX " + in_file);
+        }
+		stream.seekg(row_block.offset);
+
+		for (size_t idx = 0; idx < row_block.nnz; ++idx) {
+			std::string line;
+            std::getline(stream, line);
+            std::istringstream iss(line);
+            int g_idx, c_idx;
+            double value;
+            iss >> g_idx >> c_idx >> value;
+            row_data[c_idx - 1] = value; // Convert to 0-based index
+		}
+	} else {
+		// Fetch from TSV format
+		std::ifstream infile(in_file, std::ios::in | std::ios::binary);
+		if (!infile) {
+            throw std::runtime_error("RowReader: cannot open TSV " + in_file);
+        }
+
+		infile.seekg(tsv_offsets[g]);
+		std::string line;
+		std::getline(infile, line);
+		std::istringstream iss(line);
+		std::string token;
+		std::string gene_id;
+		std::getline(iss, gene_id, '\t');  // skip gene name
+		for (int c = 0; c < C && std::getline(iss, token, '\t'); ++c) {
+    		row_data[c] = std::stod(token);
+		}
+		infile.close();
+	}
+
+	return row_data;
 }

@@ -1,6 +1,6 @@
 #include <FitFrac.h>
 
-double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, double a, double b){
+double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double a, double b){
     double q,qmin,qmax,nor;
     int i;
 	double *Q = new double [C];
@@ -52,7 +52,8 @@ double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, 
 	for(i=0;i<C;++i){
         double x = Q[i] -q;
         if(x > 50){
-            f[i] = beta*(x-log(x)+log(x)/x);
+            double logx = log(x);
+            f[i] = beta*(x-logx+logx/x);
         }else{
             //f[i] = beta*gsl_sf_lambert_W0(exp(x));
 			f[i] = beta*Fukushima::LambertW(0,exp(x));
