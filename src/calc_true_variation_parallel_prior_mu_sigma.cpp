@@ -755,7 +755,7 @@ void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, s
 	int N_param(11);
 	string extended_output("false");
 	string no_norm_str("false");
-	string max_v_str("true");
+	string max_v_str("false");
     string to_find[11][2] = {{"-f", "--file"},
 							{"-d", "--destination"},
 							{"-n", "--n_threads"},
