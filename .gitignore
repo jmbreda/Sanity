@@ -7,3 +7,5 @@ src/calc_true_variation_parallel_prior_mu_sigma.o
 /datasets
 /tests/sanity_output
 tests/compare.log
+.DS_Store
+/bin

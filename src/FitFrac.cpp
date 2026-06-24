@@ -1,10 +1,10 @@
 #include <FitFrac.h>
 
-double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, double a, double b){
+double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double a, double b){
     double q,qmin,qmax,nor;
     int i;
 	double *Q = new double [C];
-	double beta = 1.0/((n+a)*v);
+	double beta = 1.0/(n * v);
 	double logbeta = log(beta);
 	q=0;
 	for(i=0;i<C;++i){
@@ -15,13 +15,13 @@ double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, 
 	double dq = log(2.0);
 
     /**** get initial nor ****/
-    nor = beta*normalization(Q,C,q)+b*exp(-q);
+    nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
     /**** initial c too small. Set as lower bound and increase by factor 2 until a value too large is found****/
     if(nor < 1){
         while(nor < 1){
             qmax = q;
             q = q-dq;
-            nor = beta*normalization(Q,C,q)+b*exp(-q);
+            nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
         }
         qmin = q;
     }
@@ -30,7 +30,7 @@ double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, 
         while(nor > 1){
             qmin = q;
             q = q+dq;
-            nor = beta*normalization(Q,C,q)+b*exp(-q);
+            nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
         }
         qmax = q;
     }
@@ -39,7 +39,7 @@ double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, 
     double diff = 1.0;
     while(diff > tol){
         q = (qmax+qmin)/2;
-    	nor = beta*normalization(Q,C,q)+b*exp(-q);
+    	nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
         if(nor > 1){
             qmin = q;
         }else{
@@ -52,7 +52,8 @@ double fitfrac(double *f, double *n_c, double n, double &v, int C, double *N_c, 
 	for(i=0;i<C;++i){
         double x = Q[i] -q;
         if(x > 50){
-            f[i] = beta*(x-log(x)+log(x)/x);
+            double logx = log(x);
+            f[i] = beta*(x-logx+logx/x);
         }else{
             //f[i] = beta*gsl_sf_lambert_W0(exp(x));
 			f[i] = beta*Fukushima::LambertW(0,exp(x));
