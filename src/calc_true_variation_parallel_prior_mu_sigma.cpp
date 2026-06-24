@@ -430,6 +430,11 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
                                          double n, double vmin, double vmax, int C, int numbin, double a, double b,
                                          bool max_v_output, bool post_v_output)
 {
+    // n = total counts for the gene
+    // n_c = counts for the gene in each cell
+    // N_c = total counts for each cell
+    // C = number of cells
+    // numbin = number of bins for v
     int i, k;
     double beta, L, ldet, q, delsq, inv_v;
     double *f = new double[C];
@@ -464,11 +469,11 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
     for (k = 0; k < numbin; ++k)
     {
         v = vmin * exp(deltav * k);
-        beta = 1.0 / ((n + a) * v);
+        beta = 1.0 / (n * v);
         // #pragma omp critical
         q = fitfrac(f, n_c, n, v, C, N_c, a, b);
 
-        mu_v[k] = Psi_0(n + a) - q; /*** equation (85) ***/
+        mu_v[k] = Psi_0(n) - q; /*** equation (85) ***/
 
         delsq = 0;
         L = -0.5 * ((double)C) * log(v); // (56) 1st term
@@ -479,7 +484,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
             delsq += delta_v[k][i] * delta_v[k][i];
         }
         L -= delsq / (2 * v); // (56) 2nd term
-        L -= (n + a) * q;     // 4th term in equation (56)
+        L -= n * q;     // 4th term in equation (56)
 
         // get the determinant of the matrix
         ldet = 0.0;
@@ -507,14 +512,14 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         inv_v = 1.0 / v;
         for (i = 0; i < C; ++i)
         {
-            sig2_delta_c[i] = (n + a) * f[i] * f[i] / ((n + a) * f[i] + inv_v);
+            sig2_delta_c[i] = n * f[i] * f[i] / (n * f[i] + inv_v);
         }
         /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
         sig2_delta_den1 = 1.0;
         for (i = 0; i < C; ++i)
         {
             sig2_delta_den1 -= sig2_delta_c[i];
-            sig2_delta_den2[i] = (n + a) * f[i] + inv_v;
+            sig2_delta_den2[i] = n * f[i] + inv_v;
         }
         /* compute the different terms in the numerator : remove the \tilde{c} terms */
         for (i = 0; i < C; i++)
@@ -575,7 +580,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
     }
 
     // Compute var_delta = < (mu - <mu>)^2 > + <d_mu>
-    var_mu = Psi_1((double)n + 1);
+    var_mu = Psi_1((double)n);
     for (k = 0; k < numbin; k++)
     {
         var_mu += lik[k] * (mu_v[k] - mu) * (mu_v[k] - mu);
@@ -609,7 +614,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         var_gene_v_ml = vmin * exp(deltav * Lmax_ind);
         // And then also the corresponding values for the LTQs etc.
         mu_v_ml = mu_v[Lmax_ind];
-        var_mu_v_ml = Psi_1((double)n + 1);
+        var_mu_v_ml = Psi_1((double)n);
         for (i = 0; i < C; i++)
         {
             delta_v_ml[i] = delta_v[Lmax_ind][i];
@@ -666,7 +671,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
     double dL;
     double e_low = 0.0;
     double e_high = 0.0;
-    double vnf = v * (n + a) * f;
+    double vnf = v * n * f;
     e_high = (-(d + vnf) + sqrt((d + vnf) * (d + vnf) + v * (1.0 + vnf))) / (1.0 + vnf);
 
     // bisection method :
@@ -675,7 +680,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
     while (diff > tol)
     {
         e = (e_high + e_low) / 2.0;
-        dL = e * (2.0 * d + e) / (2.0 * v) + (n + a) * f * (exp(e) - 1.0);
+        dL = e * (2.0 * d + e) / (2.0 * v) + n * f * (exp(e) - 1.0);
         if (dL < 0.5)
         {
             e_low = e;

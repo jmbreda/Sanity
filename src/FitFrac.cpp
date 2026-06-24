@@ -4,7 +4,7 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
     double q,qmin,qmax,nor;
     int i;
 	double *Q = new double [C];
-	double beta = 1.0/((n+a)*v);
+	double beta = 1.0/(n * v);
 	double logbeta = log(beta);
 	q=0;
 	for(i=0;i<C;++i){
@@ -15,13 +15,13 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
 	double dq = log(2.0);
 
     /**** get initial nor ****/
-    nor = beta*normalization(Q,C,q)+b*exp(-q);
+    nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
     /**** initial c too small. Set as lower bound and increase by factor 2 until a value too large is found****/
     if(nor < 1){
         while(nor < 1){
             qmax = q;
             q = q-dq;
-            nor = beta*normalization(Q,C,q)+b*exp(-q);
+            nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
         }
         qmin = q;
     }
@@ -30,7 +30,7 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
         while(nor > 1){
             qmin = q;
             q = q+dq;
-            nor = beta*normalization(Q,C,q)+b*exp(-q);
+            nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
         }
         qmax = q;
     }
@@ -39,7 +39,7 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
     double diff = 1.0;
     while(diff > tol){
         q = (qmax+qmin)/2;
-    	nor = beta*normalization(Q,C,q)+b*exp(-q);
+    	nor = beta*normalization(Q,C,q);  // + b * exp(-q); Commented out because b is zero anyways. This should be cleaned up!
         if(nor > 1){
             qmin = q;
         }else{
