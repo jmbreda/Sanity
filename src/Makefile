@@ -1,8 +1,11 @@
-CC=g++
-CFLAGS= -I. -O2 -ffast-math -O3 -fopenmp -std=c++11
-
+CC=g++-15
+CFLAGS= -I. -std=c++11 -O3 -march=native -flto=auto -fopenmp -fno-math-errno
+# Perhaps you need to add a path to omp headers like -I/path/to/omp/headers
+# OSX clang does not support omp by default, you need to install library and compiler separately (e.g. homebrew)
+# For OSX you need to change -march to -mcpu or remove it
+LDFLAGS= -lz
 Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o
-	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o
+	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o $(LDFLAGS)
 
 calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
@@ -26,13 +29,11 @@ Sanity_distance: compute_distance.o
 compute_distance.o: compute_distance.cpp
 	$(CC) $(CFLAGS) -c compute_distance.cpp
 
-
 Sanity_gene_correlation:  compute_gene_correlations.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity_gene_correlation compute_gene_correlations.o
 
 compute_gene_correlation.o: compute_gene_correlations.cpp
 	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
-
 
 clean:
 	rm -f *.o
