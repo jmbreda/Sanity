@@ -273,6 +273,7 @@ int main(int argc, char **argv)
             std::ofstream(out_folder + "variance_vmax.txt", std::ios::trunc).close();
             std::ofstream(out_folder + "delta_vmax.txt", std::ios::trunc).close();
             std::ofstream(out_folder + "d_delta_vmax.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "likelihood.txt", std::ios::trunc).close();
 
             out_gene.open(out_folder + "geneID.txt", std::ios::app);
             out_cell.open(out_folder + "cellID.txt", std::ios::app);
@@ -281,6 +282,14 @@ int main(int argc, char **argv)
             out_var_gene_v_ml.open(out_folder + "variance_vmax.txt", std::ios::app);
             out_delta_v_ml.open(out_folder + "delta_vmax.txt", std::ios::app);
             out_ddelta_v_ml.open(out_folder + "d_delta_vmax.txt", std::ios::app);
+            out_lik.open(out_folder + "likelihood.txt", std::ios::app);
+
+            out_lik << "Variance";
+            for (k = 0; k < (numbin); ++k)
+            {
+                out_lik << "\t" << vmin * exp(deltav * k);
+            }
+            out_lik << "\n";
         }
     }
 
@@ -407,6 +416,13 @@ int main(int argc, char **argv)
                         out_mu_v_ml << std::fixed << std::setprecision(6) << result.mu_v_ml << "\n";
                         out_dmu_v_ml << std::fixed << std::setprecision(6) << sqrt(result.var_mu_v_ml) << "\n";
                         out_var_gene_v_ml << std::fixed << std::setprecision(6) << result.var_gene_v_ml << "\n";
+                        // Write likelihood
+                        out_lik << gene_names[g];
+                        for (k = 0; k < numbin; ++k)
+                        {
+                            out_lik << "\t" << result.lik[k];
+                        }
+                        out_lik << "\n";
                     }
                 }
             }
@@ -660,6 +676,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         result.var_mu_v_ml = var_mu_v_ml;
         result.delta_v_ml = delta_v_ml;
         result.var_delta_v_ml = var_delta_v_ml;
+        result.lik = lik;
     }
     return result;
 }
