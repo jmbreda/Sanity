@@ -44,9 +44,9 @@ struct RowComputation
 };
 
 /***Function declarations ****/
-RowComputation get_gene_expression_level(const vector<double> &n_c, const vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, bool max_v_output, bool post_v_output);
+RowComputation get_gene_expression_level(const vector<double> &n_c, const vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, int max_v_output, bool post_v_output);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, bool &max_v_output, bool &post_v_output);
+ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &max_v_output, bool &post_v_output);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
@@ -81,7 +81,7 @@ int main(int argc, char **argv)
     double vmax = 50.0;
     int numbin = 160;
     bool no_norm(false);
-    bool max_v_output(false);
+    int max_v_output = 0;
     bool post_v_output(true);
     ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, max_v_output, post_v_output);
     if (parse_res == HELP_REQUESTED)
@@ -247,7 +247,7 @@ int main(int argc, char **argv)
             out_lik << "\n";
         }
     }
-    if (max_v_output)
+    if (max_v_output > 0)
     {
         std::ofstream(out_folder + "log_transcription_quotients_vmax.txt", std::ios::trunc).close();
         std::ofstream(out_folder + "ltq_error_bars_vmax.txt", std::ios::trunc).close();
@@ -384,7 +384,7 @@ int main(int argc, char **argv)
                         out_lik << "\n";
                     }
                 }
-                if (max_v_output)
+                if (max_v_output > 0)
                 {
                     out_exp_lev_v_ml << gene_names[g];
                     out_d_exp_lev_v_ml << gene_names[g];
@@ -444,7 +444,7 @@ int main(int argc, char **argv)
 
 RowComputation get_gene_expression_level(const vector<double> &n_c, const vector<double> &N_c,
                                          double n, double vmin, double vmax, int C, int numbin, double a, double b,
-                                         bool max_v_output, bool post_v_output)
+                                         int max_v_output, bool post_v_output)
 {
     // n = total counts for the gene
     // n_c = counts for the gene in each cell
@@ -572,6 +572,39 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         lik[k] /= sum_L;
     }
 
+    int vindex = 0;
+    if(max_v_output ==1){
+        vindex = Lmax_ind;
+    }
+    else if(max_v_output == 2){
+        double mapmax = -1e+100;
+        for (k = 0; k < numbin; k++)    {
+            double curv = vmin * exp(deltav * k);
+
+            if (lik[k]/curv > mapmax)
+            {
+                mapmax = lik[k]/curv;
+                vindex = k;
+            }
+        }
+    }
+    else if(max_v_output == 3){
+        double postmean = 0.0;
+        for (k = 0; k < numbin; k++)    {
+            double curv = vmin * exp(deltav * k);
+            postmean += lik[k] * curv;
+        }
+        double mindist = 1e+100;
+        for (k = 0; k < numbin; k++)    {
+            double curv = vmin * exp(deltav * k);
+            if (fabs(curv - postmean) < mindist)
+            {
+                mindist = fabs(curv - postmean);
+                vindex = k;
+            }
+        }
+    }
+
     /*
     // Multiply by prior
     for(k=0;k<numbin;k++){
@@ -624,20 +657,20 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         }
     }
 
-    if (max_v_output)
+    if (max_v_output > 0)
     {
         // Store the gene-variance that maximizes the likelihood:
-        var_gene_v_ml = vmin * exp(deltav * Lmax_ind);
+        var_gene_v_ml = vmin * exp(deltav * vindex);
         // And then also the corresponding values for the LTQs etc.
-        mu_v_ml = mu_v[Lmax_ind];
+        mu_v_ml = mu_v[vindex];
         var_mu_v_ml = Psi_1((double)n);
         for (i = 0; i < C; i++)
         {
-            delta_v_ml[i] = delta_v[Lmax_ind][i];
+            delta_v_ml[i] = delta_v[vindex][i];
         }
         for (i = 0; i < C; i++)
         {
-            var_delta_v_ml[i] = sig2_delta_v[Lmax_ind][i];
+            var_delta_v_ml[i] = sig2_delta_v[vindex][i];
         }
     }
 
@@ -711,7 +744,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
     return e * e;
 }
 
-ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, bool &max_v_output, bool &post_v_output)
+ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &max_v_output, bool &post_v_output)
 {
 
     if (argc < 2)
@@ -814,11 +847,27 @@ ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name
     if (no_norm_str == "true" || no_norm_str == "1")
         no_norm = true;
 
-    if (max_v_str == "true" || max_v_str == "1" || max_v_str == "only_max_output")
+    /* if (max_v_str == "true" || max_v_str == "1" || max_v_str == "only_max_output")
     {
-        max_v_output = true;
+        max_v_output = 1;
         post_v_output = false;
+    } */
+    if(max_v_str == "MLE" || max_v_str == "mle" || max_v_str == "MaxLikelihood" || max_v_str == "maxlikelihood" || max_v_str == "max_likelihood"){
+        max_v_output = 1;
+        post_v_output = false;
+        logging_debug("Outputting results for the prior variance (v_g) that maximizes the likelihood (MLE).");
     }
+    if(max_v_str == "MAP" || max_v_str == "map" || max_v_str == "MaxAPosterior" || max_v_str == "maxaposterior" || max_v_str == "max_a_posterior"){
+        max_v_output = 2;
+        post_v_output = false;
+        logging_debug("Outputting results for the prior variance (v_g) that maximizes the posterior (MAP).");
+    }
+    if(max_v_str == "EAP" || max_v_str == "eap" || max_v_str == "ExpectedAPosterior" || max_v_str == "expectedaposterior" || max_v_str == "expected_a_posterior"){
+        max_v_output = 3;
+        post_v_output = false;
+        logging_debug("Outputting results for the expected value of the prior variance (v_g) over the posterior (EAP).");
+    }
+
 
     // Get input file extension
     in_file_extension = (in_file.size() >= 3) ? in_file.substr(in_file.size() - 3) : in_file;
