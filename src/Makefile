@@ -1,4 +1,4 @@
-CC=g++-15
+CC=g++
 CFLAGS= -I. -std=c++11 -O3 -march=native -flto=auto -fopenmp -fno-math-errno
 # Perhaps you need to add a path to omp headers like -I/path/to/omp/headers
 # OSX clang does not support omp by default, you need to install library and compiler separately (e.g. homebrew)

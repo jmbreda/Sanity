@@ -486,7 +486,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
     {
         v = vmin * exp(deltav * k);
         beta = 1.0 / (n * v);
-        // #pragma omp critical
+        //std::cerr << "get_gene_expression_level: k = " << k << ", v = " << v << std::endl;
         q = fitfrac(f, n_c, n, v, C, N_c, a, b);
 
         mu_v[k] = Psi_0(n) - q; /*** equation (85) ***/
