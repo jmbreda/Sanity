@@ -11,7 +11,7 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 
 ### Reproducibility
-The raw UMI count and normalized datasets mentioned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DO I](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
+The raw UMI count and normalized datasets mentioned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
 
 The scripts used for running the bechmarked normalization methods and for making the figures of the preprint are in the reproducibility folder.
 
@@ -25,13 +25,20 @@ The scripts used for running the bechmarked normalization methods and for making
 | Gene 2 | 6.0 | 3.0 | 1.0 |
 | ... | |
 
+The count matrix can be compressed with gzip (with `.gz` extension).
+
 * (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Named `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
-	* (optional) Gene ID file: Named `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
-	* (optional) Cell ID file: Named `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
+The MTX file can be compressed with gzip (with `.gz` extension).
+	* (optional) Gene ID file: text file with one gene ID per line. The order of gene IDs should match the order of genes in the count matrix. Examples: `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
+	* (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * (optional) Destination folder (`'path/to/output/folder'`, default: `pwd`)
 * (optional) Number of threads (integer, default: `4`)
 * (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
-* (optional) Print output (with suffix "_vmax.txt") obtained using the maximum posterior estimate for the gene-variances $v_g$, rather than integrating over the posterior of $v_g$. This is the most correct output when one wants to reconstruct the likelihood expression from the posterior estimates, for example in the distance-calculation script. (string, `'true', 'false', '1', '0'`, default: `false`)
+* (optinal) Choose the method to estimate gene-variances $v_g$. The choice is:
+    * MAP (**default**): Use the maximum a posteriori estimate for $v_g$. (output has suffix "_vmax.txt")
+    * EAP: expected value of $v_g$ over the posterior. (output has suffix "_vmax.txt")
+    * MLE: maximum likelihood estimate for $v_g$. (output has suffix "_vmax.txt")
+    * MARG: original method of integration over the posterior of $v_g$.
 * (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
 * (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 * (optional) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
@@ -85,7 +92,7 @@ The scripts used for running the bechmarked normalization methods and for making
 	-d,--destination	Specify the destination path (default: pwd)
 	-n,--n_threads		Specify the number of threads to be used (default: 4)
 	-e,--extended_output	Option to print extended output (default: false, choice: false,0,true,1)
-	-max_v,--get_output_for_maxlik_variance	Option to obtain additional output obtained for maximum-posterior gene-variance (default: false, choice: false,0,true,1)
+	-v_m,--v_method		Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
 	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.001)
 	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 50)
 	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 160)

@@ -3,14 +3,14 @@
 #include <iomanip> // Required for setprecision
 
 double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double a, double b){
-    double q,W;
+    double q,W,x;
     int i;
     double *Q = new double [C];
     double beta = n * v;
+    double inv_beta = 1.0/beta;
     double logbeta = log(beta);
     q=0;
 
-    std::cerr << std::fixed << std::setprecision(12);
     //std::cerr << "fitfrac: beta = " << beta << " logbeta = " << logbeta << std::endl;
 
     for(i=0;i<C;++i){
@@ -47,14 +47,19 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
         //std::cerr << "fitfrac update: funcq = " << funcq << std::endl;
     }
 
-    funcq = fq(Q,C,beta,q);
+    // commented this block
+    // funcq is calculated along with f[i] in the next
+    /* funcq = fq(Q,C,beta,q);
     if(fabs(dq/q) > 1e-6){
+        std::cerr << std::fixed << std::setprecision(12);
         std::cerr << "fitfrac: WARNING: dq = " << dq << " is not close to zero at final q = " << q
             << " funcq = " << funcq << std::endl;
-    }
+    } */
+
+    funcq = beta;
 
     for(i=0;i<C;++i){
-        double x = Q[i] -q;
+        x = Q[i] -q;
         if(x > 50){
             // at large x LambertW breaks so we use an approximation
             W = LambertW0_approximation(x);
@@ -62,9 +67,14 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
         else{
             W = Fukushima::LambertW(0,exp(x));//But now I worry about taking exponent when x is large and feeding this function such a large value.
         }
-        f[i] = W/beta;
+        f[i] = W*inv_beta;
+        funcq -= W;
     }
-
+    if(fabs(dq/q) > 1e-6){
+        std::cerr << std::fixed << std::setprecision(12);
+        std::cerr << "fitfrac: WARNING: dq = " << dq << " is not close to zero at final q = " << q
+            << " funcq = " << funcq << std::endl;
+    }
   delete[] Q;
   return q;
 }
@@ -126,7 +136,7 @@ double deltaq(double *Q,int C,double beta, double q){
     return rat;
 }
 
-double LambertW0_approximation(double& x) {
+double LambertW0_approximation(const double& x) {
     // our Lambert approximation
     double L2 = log(x);
     double xsq = x*x;

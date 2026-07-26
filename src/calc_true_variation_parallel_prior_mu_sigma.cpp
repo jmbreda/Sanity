@@ -19,7 +19,7 @@
 
 using namespace std;
 
-string VERSION("1.1");
+string VERSION("2.0");
 enum ParseResult
 {
     CONTINUE,
@@ -44,9 +44,9 @@ struct RowComputation
 };
 
 /***Function declarations ****/
-RowComputation get_gene_expression_level(const vector<double> &n_c, const vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, int max_v_output, bool post_v_output);
+RowComputation get_gene_expression_level(const vector<double> &n_c, const vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, int v_method);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &max_v_output, bool &post_v_output);
+ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
@@ -58,11 +58,11 @@ void logging_debug(const std::string &msg)
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     std::tm buf;
-#ifdef _WIN32
-    localtime_s(&buf, &in_time_t);
-#else
-    localtime_r(&in_time_t, &buf);
-#endif
+    #ifdef _WIN32
+        localtime_s(&buf, &in_time_t);
+    #else
+        localtime_r(&in_time_t, &buf);
+    #endif
     std::cerr << "[" << std::put_time(&buf, "%Y-%m-%d %H:%M:%S");
     std::cerr << ',' << std::setw(3) << std::setfill('0') << ms.count() << "] ";
     std::cerr << msg << std::endl;
@@ -81,9 +81,9 @@ int main(int argc, char **argv)
     double vmax = 50.0;
     int numbin = 160;
     bool no_norm(false);
-    int max_v_output = 0;
-    bool post_v_output(true);
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, max_v_output, post_v_output);
+    int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
+
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -170,24 +170,16 @@ int main(int argc, char **argv)
     double b = 0.0;
     double deltav = log(vmax / vmin) / ((double)numbin - 1);
 
-    /*
-    for (int g = 0; g < G; ++g) {
-            std::vector<double> n_c_g = fetch_row(g, in_file, in_file_extension, mtx_rows, tsv_offsets, C);
-            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, max_v_output, post_v_output);
-            cout << g << '\n';
-    }
-    */
-
     // create output folder if it does not exist
     if (out_folder == "/") {
         out_folder = "./";
     }
     int mkdir_result = 0;
-#ifdef _WIN32
-    mkdir_result = _mkdir(out_folder.c_str());
-#else
-    mkdir_result = mkdir(out_folder.c_str(), 0755);
-#endif
+    #ifdef _WIN32
+        mkdir_result = _mkdir(out_folder.c_str());
+    #else
+        mkdir_result = mkdir(out_folder.c_str(), 0755);
+    #endif
     
     // Check for errors (ignore if directory already exists)
     if (mkdir_result != 0 && errno != EEXIST)
@@ -196,19 +188,42 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // save version and command with parameters to a file
+    std::ofstream cmd_file(out_folder + "sanity_command.txt", std::ios::trunc);
+    std::time_t now = std::time(NULL);
+    std::tm tm_snapshot;
+    #ifdef _WIN32
+        localtime_s(&tm_snapshot, &now);
+    #else
+        localtime_r(&now, &tm_snapshot);
+    #endif
+
+    char timestamp[20]; // "YYYY-MM-DD HH:MM:SS" + '\0' = 20
+    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm_snapshot);
+
+    cmd_file << "# Timestamp: " << timestamp << std::endl;
+    cmd_file << "# Sanity version: " << VERSION << std::endl;
+    cmd_file  << argv[0];
+    for (int i = 1; i < argc; ++i)
+    {
+        cmd_file << " " << argv[i];
+    }
+    cmd_file << std::endl;
+    cmd_file.close();
+
     // open files for writing
     std::ofstream out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene,
         out_delta, out_ddelta, out_lik, out_exp_lev_v_ml, out_d_exp_lev_v_ml,
         out_mu_v_ml, out_dmu_v_ml, out_var_gene_v_ml, out_delta_v_ml, out_ddelta_v_ml,
         out_gene, out_cell;
 
-    if (post_v_output)
+    if (v_method == 0)  // MARG
     {
-        std::ofstream(out_folder + "log_transcription_quotients.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "ltq_error_bars.txt", std::ios::trunc).close();
+        std::ofstream(out_folder + "log_transcription_quotients_vmarg.txt", std::ios::trunc).close();
+        std::ofstream(out_folder + "ltq_error_bars_vmarg.txt", std::ios::trunc).close();
 
-        out_exp_lev.open(out_folder + "log_transcription_quotients.txt", std::ios::app);
-        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt", std::ios::app);
+        out_exp_lev.open(out_folder + "log_transcription_quotients_vmarg.txt", std::ios::app);
+        out_d_exp_lev.open(out_folder + "ltq_error_bars_vmarg.txt", std::ios::app);
 
         out_exp_lev << "GeneID";
         out_d_exp_lev << "GeneID";
@@ -217,37 +232,37 @@ int main(int argc, char **argv)
             out_exp_lev << "\t" << cell_names[c].c_str();
             out_d_exp_lev << "\t" << cell_names[c].c_str();
         }
-        out_exp_lev << "\n";
-        out_d_exp_lev << "\n";
+        out_exp_lev << std::endl;
+        out_d_exp_lev << std::endl;
         if (print_extended_output)
         {
             std::ofstream(out_folder + "geneID.txt", std::ios::trunc).close();
             std::ofstream(out_folder + "cellID.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "mu.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "d_mu.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "variance.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "delta.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "d_delta.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "likelihood.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "mu_vmarg.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "d_mu_vmarg.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "variance_vmarg.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "delta_vmarg.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "d_delta_vmarg.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "likelihood_vmarg.txt", std::ios::trunc).close();
 
             out_gene.open(out_folder + "geneID.txt", std::ios::app);
             out_cell.open(out_folder + "cellID.txt", std::ios::app);
-            out_mu.open(out_folder + "mu.txt", std::ios::app);
-            out_dmu.open(out_folder + "d_mu.txt", std::ios::app);
-            out_var_gene.open(out_folder + "variance.txt", std::ios::app);
-            out_delta.open(out_folder + "delta.txt", std::ios::app);
-            out_ddelta.open(out_folder + "d_delta.txt", std::ios::app);
-            out_lik.open(out_folder + "likelihood.txt", std::ios::app);
+            out_mu.open(out_folder + "mu_vmarg.txt", std::ios::app);
+            out_dmu.open(out_folder + "d_mu_vmarg.txt", std::ios::app);
+            out_var_gene.open(out_folder + "variance_vmarg.txt", std::ios::app);
+            out_delta.open(out_folder + "delta_vmarg.txt", std::ios::app);
+            out_ddelta.open(out_folder + "d_delta_vmarg.txt", std::ios::app);
+            out_lik.open(out_folder + "likelihood_vmarg.txt", std::ios::app);
 
             out_lik << "Variance";
             for (k = 0; k < (numbin); ++k)
             {
                 out_lik << "\t" << vmin * exp(deltav * k);
             }
-            out_lik << "\n";
+            out_lik << std::endl;
         }
     }
-    if (max_v_output > 0)
+    if (v_method > 0)
     {
         std::ofstream(out_folder + "log_transcription_quotients_vmax.txt", std::ios::trunc).close();
         std::ofstream(out_folder + "ltq_error_bars_vmax.txt", std::ios::trunc).close();
@@ -262,8 +277,8 @@ int main(int argc, char **argv)
             out_exp_lev_v_ml << "\t" << cell_names[c].c_str();
             out_d_exp_lev_v_ml << "\t" << cell_names[c].c_str();
         }
-        out_exp_lev_v_ml << "\n";
-        out_d_exp_lev_v_ml << "\n";
+        out_exp_lev_v_ml << std::endl;
+        out_d_exp_lev_v_ml << std::endl;
         if (print_extended_output)
         {
             std::ofstream(out_folder + "geneID.txt", std::ios::trunc).close();
@@ -273,7 +288,7 @@ int main(int argc, char **argv)
             std::ofstream(out_folder + "variance_vmax.txt", std::ios::trunc).close();
             std::ofstream(out_folder + "delta_vmax.txt", std::ios::trunc).close();
             std::ofstream(out_folder + "d_delta_vmax.txt", std::ios::trunc).close();
-            std::ofstream(out_folder + "likelihood.txt", std::ios::trunc).close();
+            std::ofstream(out_folder + "likelihood_vmax.txt", std::ios::trunc).close();
 
             out_gene.open(out_folder + "geneID.txt", std::ios::app);
             out_cell.open(out_folder + "cellID.txt", std::ios::app);
@@ -282,28 +297,28 @@ int main(int argc, char **argv)
             out_var_gene_v_ml.open(out_folder + "variance_vmax.txt", std::ios::app);
             out_delta_v_ml.open(out_folder + "delta_vmax.txt", std::ios::app);
             out_ddelta_v_ml.open(out_folder + "d_delta_vmax.txt", std::ios::app);
-            out_lik.open(out_folder + "likelihood.txt", std::ios::app);
+            out_lik.open(out_folder + "likelihood_vmax.txt", std::ios::app);
 
             out_lik << "Variance";
             for (k = 0; k < (numbin); ++k)
             {
                 out_lik << "\t" << vmin * exp(deltav * k);
             }
-            out_lik << "\n";
+            out_lik << std::endl;
         }
     }
 
     logging_debug("Fit gene expression levels");
     const clock_t begin = clock();
-#pragma omp parallel num_threads(N_threads)
+    #pragma omp parallel num_threads(N_threads)
     {
         FileReader thread_reader(in_file);
-#pragma omp for schedule(dynamic) ordered
+        #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < G; ++g)
         {
             std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
-            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, max_v_output, post_v_output);
-#pragma omp ordered
+            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, v_method);
+            #pragma omp ordered
             {
                 if (g == (3 * N_threads - 1))
                 {
@@ -343,7 +358,7 @@ int main(int argc, char **argv)
                 {
                     logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(G));
                 }
-                if (post_v_output)
+                if (v_method == 0)  // MARG
                 {
                     out_exp_lev << gene_names[g];
                     out_d_exp_lev << gene_names[g];
@@ -362,29 +377,29 @@ int main(int argc, char **argv)
                             }
                         }
                     }
-                    out_exp_lev << "\n";
-                    out_d_exp_lev << "\n";
+                    out_exp_lev << std::endl;
+                    out_d_exp_lev << std::endl;
                     if (print_extended_output)
                     {
-                        out_delta << "\n";
-                        out_ddelta << "\n";
+                        out_delta << std::endl;
+                        out_ddelta << std::endl;
                         // Write gene names
-                        out_gene << gene_names[g].c_str() << "\n";
+                        out_gene << gene_names[g].c_str() << std::endl;
                         // print best fit to file : mu, delta
                         //  Print diagonal of invM : variance of mu, delta
-                        out_mu << std::fixed << std::setprecision(6) << result.mu << "\n";
-                        out_dmu << std::fixed << std::setprecision(6) << sqrt(result.var_mu) << "\n";
-                        out_var_gene << std::fixed << std::setprecision(6) << result.var_gene << "\n";
+                        out_mu << std::fixed << std::setprecision(6) << result.mu << std::endl;
+                        out_dmu << std::fixed << std::setprecision(6) << sqrt(result.var_mu) << std::endl;
+                        out_var_gene << std::fixed << std::setprecision(6) << result.var_gene << std::endl;
                         // Write likelihood
                         out_lik << gene_names[g];
                         for (k = 0; k < numbin; ++k)
                         {
                             out_lik << "\t" << result.lik[k];
                         }
-                        out_lik << "\n";
+                        out_lik << std::endl;
                     }
                 }
-                if (max_v_output > 0)
+                if (v_method > 0)
                 {
                     out_exp_lev_v_ml << gene_names[g];
                     out_d_exp_lev_v_ml << gene_names[g];
@@ -403,26 +418,26 @@ int main(int argc, char **argv)
                             }
                         }
                     }
-                    out_exp_lev_v_ml << "\n";
-                    out_d_exp_lev_v_ml << "\n";
+                    out_exp_lev_v_ml << std::endl;
+                    out_d_exp_lev_v_ml << std::endl;
                     if (print_extended_output)
                     {
-                        out_delta_v_ml << "\n";
-                        out_ddelta_v_ml << "\n";
+                        out_delta_v_ml << std::endl;
+                        out_ddelta_v_ml << std::endl;
                         // Write gene names
-                        out_gene << gene_names[g].c_str() << "\n";
+                        out_gene << gene_names[g].c_str() << std::endl;
                         // print best fit to file : mu, delta
                         //  Print diagonal of invM : variance of mu, delta
-                        out_mu_v_ml << std::fixed << std::setprecision(6) << result.mu_v_ml << "\n";
-                        out_dmu_v_ml << std::fixed << std::setprecision(6) << sqrt(result.var_mu_v_ml) << "\n";
-                        out_var_gene_v_ml << std::fixed << std::setprecision(6) << result.var_gene_v_ml << "\n";
+                        out_mu_v_ml << std::fixed << std::setprecision(6) << result.mu_v_ml << std::endl;
+                        out_dmu_v_ml << std::fixed << std::setprecision(6) << sqrt(result.var_mu_v_ml) << std::endl;
+                        out_var_gene_v_ml << std::fixed << std::setprecision(6) << result.var_gene_v_ml << std::endl;
                         // Write likelihood
                         out_lik << gene_names[g];
                         for (k = 0; k < numbin; ++k)
                         {
                             out_lik << "\t" << result.lik[k];
                         }
-                        out_lik << "\n";
+                        out_lik << std::endl;
                     }
                 }
             }
@@ -434,7 +449,7 @@ int main(int argc, char **argv)
         // save cell names
         for (c = 0; c < C; c++)
         {
-            out_cell << cell_names[c].c_str() << "\n";
+            out_cell << cell_names[c].c_str() << std::endl;
         }
     }
     logging_debug("Finished fitting all genes");
@@ -444,7 +459,7 @@ int main(int argc, char **argv)
 
 RowComputation get_gene_expression_level(const vector<double> &n_c, const vector<double> &N_c,
                                          double n, double vmin, double vmax, int C, int numbin, double a, double b,
-                                         int max_v_output, bool post_v_output)
+                                         int v_method)
 {
     // n = total counts for the gene
     // n_c = counts for the gene in each cell
@@ -573,10 +588,10 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
     }
 
     int vindex = 0;
-    if(max_v_output ==1){
+    if(v_method ==1){
         vindex = Lmax_ind;
     }
-    else if(max_v_output == 2){
+    else if(v_method == 2){
         double mapmax = -1e+100;
         for (k = 0; k < numbin; k++)    {
             double curv = vmin * exp(deltav * k);
@@ -588,7 +603,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
             }
         }
     }
-    else if(max_v_output == 3){
+    else if(v_method == 3){
         double postmean = 0.0;
         for (k = 0; k < numbin; k++)    {
             double curv = vmin * exp(deltav * k);
@@ -635,7 +650,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         var_mu += lik[k] * (mu_v[k] - mu) * (mu_v[k] - mu);
     }
 
-    if (post_v_output)
+    if (v_method == 0)  // MARG
     {
         // Compute <delta> = int p(v)*delta(v) dv
         for (i = 0; i < C; i++)
@@ -657,7 +672,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         }
     }
 
-    if (max_v_output > 0)
+    if (v_method > 0)
     {
         // Store the gene-variance that maximizes the likelihood:
         var_gene_v_ml = vmin * exp(deltav * vindex);
@@ -690,7 +705,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
     RowComputation result;
     result.mu = mu;
     result.var_mu = var_mu;
-    if (post_v_output)
+    if (v_method == 0)  // MARG
     {
         result.delta = delta;
         result.var_delta = var_delta;
@@ -702,7 +717,7 @@ RowComputation get_gene_expression_level(const vector<double> &n_c, const vector
         }
         result.lik = lik;
     }
-    if (max_v_output)
+    if (v_method > 0)
     {
         result.var_gene_v_ml = var_gene_v_ml;
         result.mu_v_ml = mu_v_ml;
@@ -744,7 +759,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
     return e * e;
 }
 
-ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &max_v_output, bool &post_v_output)
+ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method)
 {
 
     if (argc < 2)
@@ -778,7 +793,7 @@ ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name
     int N_param(11);
     string extended_output("false");
     string no_norm_str("false");
-    string max_v_str("false");
+    string v_method_str("MAP");
     string to_find[11][2] = {{"-f", "--file"},
                              {"-d", "--destination"},
                              {"-n", "--n_threads"},
@@ -789,7 +804,7 @@ ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name
                              {"-mtx_genes", "--mtx_gene_name_file"},
                              {"-mtx_cells", "--mtx_cell_name_file"},
                              {"-no_norm", "--no_cell_size_normalization"},
-                             {"-max_v", "--get_output_for_maxlik_variance"}};
+                             {"-v_m", "--v_method"}};
 
     int j;
     int idx;
@@ -827,7 +842,7 @@ ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name
                 if (j == 9)
                     no_norm_str = argv[idx + 1];
                 if (j == 10)
-                    max_v_str = argv[idx + 1];
+                    v_method_str = argv[idx + 1];
                 // add '/' to out_folder if not already
                 if (j == 1 && out_folder.back() != '/')
                     out_folder = out_folder + '/';
@@ -847,27 +862,22 @@ ParseResult parse_argv(int argc, char **argv, string &in_file, string &gene_name
     if (no_norm_str == "true" || no_norm_str == "1")
         no_norm = true;
 
-    /* if (max_v_str == "true" || max_v_str == "1" || max_v_str == "only_max_output")
-    {
-        max_v_output = 1;
-        post_v_output = false;
-    } */
-    if(max_v_str == "MLE" || max_v_str == "mle" || max_v_str == "MaxLikelihood" || max_v_str == "maxlikelihood" || max_v_str == "max_likelihood"){
-        max_v_output = 1;
-        post_v_output = false;
+    if(v_method_str == "MLE" || v_method_str == "mle" || v_method_str == "MaxLikelihood" || v_method_str == "maxlikelihood" || v_method_str == "max_likelihood"){
+        v_method = 1;
         logging_debug("Outputting results for the prior variance (v_g) that maximizes the likelihood (MLE).");
     }
-    if(max_v_str == "MAP" || max_v_str == "map" || max_v_str == "MaxAPosterior" || max_v_str == "maxaposterior" || max_v_str == "max_a_posterior"){
-        max_v_output = 2;
-        post_v_output = false;
+    if(v_method_str == "MAP" || v_method_str == "map" || v_method_str == "MaxAPosterior" || v_method_str == "maxaposterior" || v_method_str == "max_a_posterior"){
+        v_method = 2;
         logging_debug("Outputting results for the prior variance (v_g) that maximizes the posterior (MAP).");
     }
-    if(max_v_str == "EAP" || max_v_str == "eap" || max_v_str == "ExpectedAPosterior" || max_v_str == "expectedaposterior" || max_v_str == "expected_a_posterior"){
-        max_v_output = 3;
-        post_v_output = false;
+    if(v_method_str == "EAP" || v_method_str == "eap" || v_method_str == "ExpectedAPosterior" || v_method_str == "expectedaposterior" || v_method_str == "expected_a_posterior"){
+        v_method = 3;
         logging_debug("Outputting results for the expected value of the prior variance (v_g) over the posterior (EAP).");
     }
-
+    if(v_method_str == "MARG" || v_method_str == "marg" || v_method_str == "marginalizing"){
+        v_method = 0;
+        logging_debug("Outputting results for the prior variance (v_g) marginalizing over v.");
+    }
 
     // Get input file extension
     in_file_extension = (in_file.size() >= 3) ? in_file.substr(in_file.size() - 3) : in_file;
@@ -919,8 +929,7 @@ static void show_usage(void)
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
               << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
               << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
-              << "\t-max_v,--get_output_for_maxlik_variance\tOption to get the results for the prior variance (v_g) that maximizes the likelihood, \n\t"
-              << "\ti.e., without integrating over the posterior for v_g. (default: false, choice: false,0,true,1)\n";
+              << "\t-v_m,--v_method\t\tOption to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)\n";
 }
 
 std::vector<double> fetch_row(int g, FileReader &thread_reader, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C)
