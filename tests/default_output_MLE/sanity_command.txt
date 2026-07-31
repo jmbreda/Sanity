@@ -1,0 +1,4 @@
+# Timestamp: 2026-07-31 10:53:19
+# Sanity version: 2.0
+# Method: MLE
+../bin/Sanity -f count_table.tsv -d default_output_MLE -v_m MLE -e 1

@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import os
 import shutil
+import subprocess
 import sys
 
 
@@ -12,6 +13,8 @@ def compare(dir1, dir2):
 
     for ctrlfile in files:
         x = os.path.split(ctrlfile)[1]
+        if x == "sanity_command.txt":
+            continue
         myfile = ctrlfile.replace(dir1, dir2)
         if not os.path.exists(myfile):
             print("File {} not found in {}".format(x, dir2))
@@ -46,38 +49,30 @@ def compare(dir1, dir2):
 
 if __name__ == "__main__":
     sanity_out_dir = "sanity_output"
-    default_results = "default_output0"
 
-    with open("compare.log", "at") as fout:
-        pass  # Clear log file
+    methods = ["MAP", "EAP", "MLE", "MARG"]
+    for method in methods:
 
-    print("Running Sanity comparison test 1")
-    os.system("../bin/Sanity -f count_table.tsv -d {} -max_v 0 -e 1".format(sanity_out_dir))
-    result = compare(default_results, sanity_out_dir)
-    shutil.rmtree(sanity_out_dir)
-    if result == 0:
-        result = "PASSED"
-    elif result == 1:
-        result = "PASSED with acceptable differences"
-    else:
-        result = "FAILED"
-    print("Test 1 passed: {}\n\n\n".format(result))
+        default_results = "default_output_{}".format(method)
 
-    if result != "PASSED":
-        print("See compare.log for details")
+        with open("compare.log", "at") as fout:
+            pass  # Clear log file
 
-    print("Running Sanity comparison test 2")
-    default_results = "default_output1"
-    os.system("../bin/Sanity -f count_table.tsv -d {} -max_v 1 -e 1".format(sanity_out_dir))
-    result = compare(default_results, sanity_out_dir)
-    shutil.rmtree(sanity_out_dir)
-    if result == 0:
-        result = "PASSED"
-    elif result == 1:
-        result = "PASSED with acceptable differences"
-    else:
-        result = "FAILED"
-    print("Test 2 passed: {}".format(result))
+        print("Running Sanity comparison test for method {}".format(method))
+        with open("compare.log", "at") as fout:
+            subprocess.run(["../bin/Sanity", "-f", "count_table.tsv",
+                "-d", sanity_out_dir,
+                "-v_m", method,
+                "-e", "1"], stderr=fout, stdout=fout)
+        result = compare(default_results, sanity_out_dir)
+        shutil.rmtree(sanity_out_dir)
+        if result == 0:
+            result = "PASSED"
+        elif result == 1:
+            result = "PASSED with acceptable differences"
+        else:
+            result = "FAILED"
+        print("Test for method {} passed: {}\n".format(method, result))
 
-    if result != "PASSED":
-        print("See compare.log for details")
+        if result != "PASSED":
+            print("See compare.log for details")

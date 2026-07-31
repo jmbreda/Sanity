@@ -17,7 +17,7 @@ The scripts used for running the bechmarked normalization methods and for making
 
 ## Input
 
-* UMI count matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values. (`'path/to/text_file'`)
+* `-f`: UMI count matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values. (`'path/to/text_file'`)
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
 |:-------|:------:|:------:|:------:|------:|
@@ -27,21 +27,21 @@ The scripts used for running the bechmarked normalization methods and for making
 
 The count matrix can be compressed with gzip (with `.gz` extension).
 
-* (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Named `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
+* `-f`: (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Example: `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
 The MTX file can be compressed with gzip (with `.gz` extension).
-	* (optional) Gene ID file: text file with one gene ID per line. The order of gene IDs should match the order of genes in the count matrix. Examples: `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
-	* (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
-* (optional) Destination folder (`'path/to/output/folder'`, default: `pwd`)
-* (optional) Number of threads (integer, default: `4`)
-* (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
-* (optinal) Choose the method to estimate gene-variances $v_g$. The choice is:
+	* `-mtx_cells`: (optional) Gene ID file: text file with one gene ID per line. The order of gene IDs should match the order of genes in the count matrix. Examples: `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
+	* `-mtx_genes`: (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
+* `-d`: (optional) Destination folder (`'path/to/output/folder'`, default: `cwd`)
+* `-n`: (optional) Number of threads (integer, default: `4`)
+* `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
+* `-v_m`: (optional) Choose the method to estimate gene-variances $v_g$. The choice is:
     * MAP (**default**): Use the maximum a posteriori estimate for $v_g$. (output has suffix "_vmax.txt")
     * EAP: expected value of $v_g$ over the posterior. (output has suffix "_vmax.txt")
     * MLE: maximum likelihood estimate for $v_g$. (output has suffix "_vmax.txt")
     * MARG: original method of integration over the posterior of $v_g$.
-* (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
-* (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
-* (optional) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
+* `-vmin/-vmax`: (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
+* `-nbin`: (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
+* `-no_norm`: (optional) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 ## Output
 
 * log_transcription_quotients.txt: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
@@ -60,8 +60,6 @@ The MTX file can be compressed with gzip (with `.gz` extension).
   | Gene 2 | 0.315551 | 0.325912 | 0.301861 |
   | ... | |
 
-* (optional) log_transcription_quotients_vmax.txt: Analogous file to log_transcription_quotients.txt but reporting the LTQs obtained by using the maximum-posterior gene-variance $v_g$. This file is only produced when `-max v` is set to `true` or `1`.
-* (optional) ltq_error_bars_vmax.txt: See the description for log_transcription_quotients_vmax.txt.
 
 ## Extended output (optional)
 
@@ -70,7 +68,6 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 * variance.txt : Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file log_transcription_quotients.txt. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly adviced to use the results in this file.
 * delta.txt : Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*.
 * d_delta.txt : Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*.
-* ..._vmax.txt: All the above files will be obtained with a `_vmax.txt`-suffix when `-max_v` is set to `true` or `1`.
 * likelihood.txt : This file encodes the posterior distribution of each gene’s true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains the matrix with posterior values *P<sub>gb</sub>* for each gene *g* and each bin *b*.
 
   | | | | | |
@@ -84,19 +81,19 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 ```
   ./Sanity <option(s)> SOURCES
   Options:
-	-h,--help		Show this help message
-	-v,--version		Show the current version
-	-f,--file		Specify the input transcript count text file (.mtx for Matrix Market File Format)
-	-mtx_genes,--mtx_gene_name_file	Specify the gene name text file (only needed if .mtx input file)
-        -mtx_cells,--mtx_cell_name_file	Specify the cell name text file (only needed if .mtx input file)
-	-d,--destination	Specify the destination path (default: pwd)
-	-n,--n_threads		Specify the number of threads to be used (default: 4)
-	-e,--extended_output	Option to print extended output (default: false, choice: false,0,true,1)
-	-v_m,--v_method		Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
-	-vmin,--variance_min	Minimal value of variance in log transcription quotient (default: 0.001)
-	-vmax,--variance_max	Maximal value of variance in log transcription quotient (default: 50)
-	-nbin,--number_of_bins	Number of bins for the variance in log transcription quotient  (default: 160)
-	-no_norm,--no_cell_size_normalization	Option to skip cell size normalization (default: false, choice: false,0,true,1)
+    -h, --help                          Show this help message
+    -v, --version                       Show the current version
+    -f, --file                          Specify the input transcript count text file (.mtx for Matrix Market File Format)
+    -mtx_genes, --mtx_gene_name_file    Specify the gene name text file (only needed if .mtx input file)
+    -mtx_cells, --mtx_cell_name_file    Specify the cell name text file (only needed if .mtx input file)
+    -d, --destination                   Specify the destination path (default: pwd)
+    -n, --n_threads                     Specify the number of threads to be used (default: 4)
+    -e, --extended_output               Option to print extended output (default: false, choice: false,0,true,1)
+    -v_m, --v_method                    Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
+    -vmin, --variance_min               Minimal value of variance in log transcription quotient (default: 0.001)
+    -vmax, --variance_max               Maximal value of variance in log transcription quotient (default: 50)
+    -nbin, --number_of_bins.            Number of bins for the variance in log transcription quotient  (default: 160)
+    -no_norm, --no_cell_size_normalization  Option to skip cell size normalization (default: false, choice: false,0,true,1)
 ```
 
 ## Installation
@@ -112,6 +109,8 @@ git clone https://github.com/jmbreda/Sanity.git
 	sudo apt-get install libgomp1
 	```
 	
+    Examples below are for gcc version 9, but should work with other versions as well. If you have a different version of gcc, please change the version number in the commands below accordingly.
+    
 	* On mac OS using macports  
 	Install the `gcc9` package
 	```

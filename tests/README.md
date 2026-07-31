@@ -5,7 +5,7 @@ This directory contains a simple test for Sanity.
 ## Overview
 
 The test runs Sanity on a small count matrix (`count_table.tsv`) with the following options:
-- `-v_max 0` or `1`
+- `-v_m` "MAP" or "EAP" or "MLE" or "MARG"
 - `-e 1`
 
 The test prints out results, which may vary:
@@ -28,4 +28,4 @@ Python script `compare.py` requires `numpy` library.
     ```bash
     python compare.py
     ```
-    Differences are saved in `compare.log` file.
+    Details on differences are saved in `compare.log` file.

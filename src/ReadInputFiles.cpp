@@ -1,8 +1,216 @@
-#include <ReadInputFiles.h>
+#include "ReadInputFiles.h"
 #include <omp.h>
 #include <atomic>
+#include <cstring>
 
-void Get_G_C_UMIcountMatrix(string in_file,
+
+/*** FileReader class implementation ***/
+FileReader::FileReader() : gz_fp(nullptr), plain_fp(nullptr), is_gzipped(false), is_open_flag(false), max_line_length(0), line_buffer(nullptr) {}
+
+FileReader::FileReader(const std::string &fname) : gz_fp(nullptr), plain_fp(nullptr), is_gzipped(false), is_open_flag(false), max_line_length(0), line_buffer(nullptr)
+{
+    open(fname);
+}
+
+FileReader::~FileReader()
+{
+    close();
+    delete[] line_buffer;
+}
+
+bool FileReader::open(const std::string &fname)
+{
+    close();
+    filename = fname;
+    // Check if file ends with .gz
+    is_gzipped = (fname.size() >= 3 && fname.substr(fname.size() - 3) == ".gz");
+
+    if (is_gzipped)
+    {
+        gz_fp = gzopen(fname.c_str(), "rb");
+        is_open_flag = (gz_fp != nullptr);
+    }
+    else
+    {
+        plain_fp = fopen(fname.c_str(), "rb");
+        is_open_flag = (plain_fp != nullptr);
+        if (is_open_flag)
+        {
+            // Allocate a reusable buffer to reduce system calls on plain files.
+            const std::size_t buf_size = 1u << 20; // 1 MB
+            plain_buffer.resize(buf_size);
+            if (!plain_buffer.empty())
+            {
+                setvbuf(plain_fp, plain_buffer.data(), _IOFBF, plain_buffer.size());
+            }
+        }
+    }
+    return is_open_flag;
+}
+
+bool FileReader::is_open() const
+{
+    return is_open_flag;
+}
+
+char *FileReader::getline()
+{
+    if (!is_open_flag)
+        return nullptr;
+
+    if (max_line_length == 0)
+    {
+        max_line_length = 1024;
+        line_buffer = new char[max_line_length];
+    }
+
+    std::size_t current_pos = 0;
+
+    while (true)
+    {
+        char *res = nullptr;
+        std::size_t remaining = max_line_length - current_pos;
+
+        if (is_gzipped)
+        {
+            res = gzgets(gz_fp, line_buffer + current_pos, static_cast<int>(remaining));
+        }
+        else
+        {
+            res = fgets(line_buffer + current_pos, static_cast<int>(remaining), plain_fp);
+        }
+
+        if (res == nullptr)
+        {
+            if (current_pos > 0)
+            {
+                // We have partial data but hit EOF/error.
+                line_buffer[current_pos] = '\0';
+                break;
+            }
+            return nullptr;
+        }
+
+        std::size_t chunk_len = std::strlen(line_buffer + current_pos);
+        if (chunk_len == 0)
+        {
+            if (current_pos > 0)
+            {
+                break;
+            }
+            return nullptr;
+        }
+
+        current_pos += chunk_len;
+        bool has_newline = (line_buffer[current_pos - 1] == '\n');
+
+        if (has_newline)
+        {
+            line_buffer[current_pos - 1] = '\0';
+            current_pos -= 1;
+            break;
+        }
+        else if (chunk_len == remaining - 1)
+        {
+            // Buffer is full but no newline yet, need to expand.
+            std::size_t new_length = max_line_length * 2;
+            char *new_buffer = new char[new_length];
+            std::memcpy(new_buffer, line_buffer, current_pos);
+            delete[] line_buffer;
+            line_buffer = new_buffer;
+            max_line_length = new_length;
+            continue; // Read more of the line.
+        }
+        else
+        {
+            // Read less than buffer size but no newline, must be EOF.
+            break;
+        }
+    }
+
+    // Trim trailing carriage returns if present.
+    while (current_pos > 0 && line_buffer[current_pos - 1] == '\r')
+    {
+        line_buffer[current_pos - 1] = '\0';
+        --current_pos;
+    }
+
+    return line_buffer;
+}
+
+long long FileReader::tellg()
+{
+    if (!is_open_flag)
+        return -1;
+
+    if (is_gzipped)
+    {
+        return static_cast<long long>(gztell(gz_fp));
+    }
+    else
+    {
+        if (plain_fp == nullptr)
+        {
+            return -1;
+        }
+#ifdef _WIN32
+        return static_cast<long long>(_ftelli64(plain_fp));
+#else
+        return static_cast<long long>(ftello(plain_fp));
+#endif
+    }
+}
+
+bool FileReader::seekg(long long offset)
+{
+    if (!is_open_flag)
+        return false;
+
+    if (is_gzipped)
+    {
+        return (gzseek(gz_fp, offset, SEEK_SET) >= 0);
+    }
+    else
+    {
+        if (plain_fp == nullptr)
+        {
+            return false;
+        }
+#ifdef _WIN32
+        return (_fseeki64(plain_fp, offset, SEEK_SET) == 0);
+#else
+        return (fseeko(plain_fp, offset, SEEK_SET) == 0);
+#endif
+    }
+}
+
+void FileReader::close()
+{
+    if (is_open_flag)
+    {
+        if (is_gzipped && gz_fp != nullptr)
+        {
+            gzclose(gz_fp);
+            gz_fp = nullptr;
+        }
+        else if (!is_gzipped && plain_fp != nullptr)
+        {
+            fclose(plain_fp);
+            plain_fp = nullptr;
+        }
+        plain_buffer.clear();
+        is_open_flag = false;
+    }
+}
+
+bool FileReader::gzipped() const
+{
+    return is_gzipped;
+}
+/*** end of FileReader class implementation ***/
+
+
+void Get_G_C_UMIcountMatrix(std::string in_file,
                             int &N_rows,
                             int &G,
                             int &C,
@@ -42,7 +250,7 @@ void Get_G_C_UMIcountMatrix(string in_file,
     while (token)
     {
         std::string name(token);
-        size_t pos = name.find('\r');
+        std::size_t pos = name.find('\r');
         if (pos != std::string::npos)
         {
             name.erase(pos, 1);
@@ -84,7 +292,7 @@ void Get_G_C_UMIcountMatrix(string in_file,
     if (N_rows == 0)
     {
         G = 0;
-        N_c.assign(static_cast<size_t>(C), 0.0);
+        N_c.assign(static_cast<std::size_t>(C), 0.0);
         n.clear();
         gene_names.clear();
         tsv_offsets.clear();
@@ -101,7 +309,7 @@ void Get_G_C_UMIcountMatrix(string in_file,
     std::string parse_error_line;
     int parse_error_row = -1;
 
-#pragma omp parallel num_threads(N_threads)
+    #pragma omp parallel num_threads(N_threads)
     {
         // Thread-local accumulators for cell totals
         std::vector<double> local_cell_totals(static_cast<size_t>(C), 0.0);
@@ -113,13 +321,13 @@ void Get_G_C_UMIcountMatrix(string in_file,
         char *thread_token = nullptr;
         if (!thread_reader.is_open())
         {
-#pragma omp critical
+            #pragma omp critical
             {
                 fprintf(stderr, "Error: Thread cannot open file %s\n", in_file.c_str());
             }
         }
 
-#pragma omp for schedule(static)
+        #pragma omp for schedule(static)
         for (int row_idx = 0; row_idx < N_rows; ++row_idx)
         {
             if (parse_error.load())
@@ -149,7 +357,7 @@ void Get_G_C_UMIcountMatrix(string in_file,
                 continue;
             }
             std::string gene_id(thread_token);
-            size_t pos = gene_id.find('\r');
+            std::size_t pos = gene_id.find('\r');
             if (pos != std::string::npos)
             {
                 gene_id.erase(pos, 1);
@@ -161,19 +369,19 @@ void Get_G_C_UMIcountMatrix(string in_file,
             }
 
             double row_sum = 0.0;
-            double value;
+            bool row_parse_failed = false;
             for (int c = 0; c < C; ++c)
             {
                 thread_token = strtok_r(NULL, " \t,", &thread_saveptr);
                 if (thread_token != NULL)
                 {
-                    double value = stod(thread_token); /**total count this gene**/
+                    double value = std::stod(thread_token); /**total count this gene**/
                     row_sum += value;
                     local_cell_totals[static_cast<std::size_t>(c)] += value;
                 }
                 else
                 {
-#pragma omp critical
+                    #pragma omp critical
                     {
                         if (!parse_error.load())
                         {
@@ -183,11 +391,17 @@ void Get_G_C_UMIcountMatrix(string in_file,
                             parse_error_line = thread_sc ? thread_sc : "";
                         }
                     }
-                    delete[] thread_sc;
-                    continue;
+                    row_parse_failed = true;
+                    break;
                 }
             }
             delete[] thread_sc;
+            thread_sc = nullptr;
+            if (row_parse_failed)
+            {
+                continue;
+            }
+
             // Record gene if total count is greater than 0
             if (row_sum > 0.0)
             {
@@ -200,10 +414,10 @@ void Get_G_C_UMIcountMatrix(string in_file,
         // Close thread's FileReader
         thread_reader.close();
 
-// Reduce cell totals from all threads
-#pragma omp critical
+        // Reduce cell totals from all threads
+        #pragma omp critical
         {
-            for (size_t c = 0; c < static_cast<size_t>(C); ++c)
+            for (std::size_t c = 0; c < static_cast<std::size_t>(C); ++c)
             {
                 cell_totals[c] += local_cell_totals[c];
             }
@@ -240,11 +454,9 @@ void Get_G_C_UMIcountMatrix(string in_file,
     // Assign results to output vectors
     N_c.assign(cell_totals.begin(), cell_totals.end());
     n.assign(gene_totals.begin(), gene_totals.end());
-
-    return;
 }
 
-void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gene_idx, vector<RowBlock> &mtx_rows, vector<double> &N_c, vector<double> &n)
+void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int, int> &gene_idx, std::vector<RowBlock> &mtx_rows, std::vector<double> &N_c, std::vector<double> &n)
 {
 
     FileReader infp(in_file);
@@ -310,19 +522,19 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
         {
             token = strtok(line_buffer, " ");
             // Highest number of genes expressed and not
-            N_rows = stoi(token);
+            N_rows = std::stoi(token);
             token = strtok(NULL, " \t");
             // Number of cells
-            C = stoi(token);
+            C = std::stoi(token);
             break;
         }
     }
 
     // Prepare accumulators
-    vector<char> expressed_genes(N_rows, 0);
-    vector<RowBlock> row_blocks_tmp(N_rows);
-    vector<double> gene_totals(N_rows, 0.0);
-    vector<double> cell_totals(static_cast<size_t>(C), 0.0);
+    std::vector<char> expressed_genes(N_rows, 0);
+    std::vector<RowBlock> row_blocks_tmp(N_rows);
+    std::vector<double> gene_totals(N_rows, 0.0);
+    std::vector<double> cell_totals(static_cast<std::size_t>(C), 0.0);
     for (int g = 0; g < N_rows; ++g)
     {
         row_blocks_tmp[g].offset = -1;
@@ -353,7 +565,7 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
         {
             continue;
         }
-        g_idx = stoi(token) - 1;
+        g_idx = std::stoi(token) - 1;
 
         token = strtok(NULL, " \t\r\n");
         if (token == NULL)
@@ -362,7 +574,7 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
             infp.close();
             exit(EXIT_FAILURE);
         }
-        c_idx = stoi(token) - 1;
+        c_idx = std::stoi(token) - 1;
 
         token = strtok(NULL, " \t\r\n");
         if (token == NULL)
@@ -371,7 +583,7 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
             infp.close();
             exit(EXIT_FAILURE);
         }
-        count = stod(token);
+        count = std::stod(token);
 
         if (g_idx < 0 || g_idx >= N_rows)
         {
@@ -408,14 +620,14 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
             row_blocks_tmp[g_idx].nnz += 1;
         }
         gene_totals[g_idx] += count;
-        cell_totals[static_cast<size_t>(c_idx)] += count;
+        cell_totals[static_cast<std::size_t>(c_idx)] += count;
     }
     infp.close();
 
     // Build gene_idx map, mtx_rows blocks and totals n (only for non-zero genes)
     mtx_rows.clear();
     mtx_rows.resize(G);
-    n.assign(static_cast<size_t>(G), 0.0);
+    n.assign(static_cast<std::size_t>(G), 0.0);
     int cur = 0;
     for (int g = 0; g < N_rows; ++g)
     {
@@ -423,7 +635,7 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
         {
             gene_idx[g] = cur;
             mtx_rows[cur] = row_blocks_tmp[g];
-            n[static_cast<size_t>(cur)] = gene_totals[g];
+            n[static_cast<std::size_t>(cur)] = gene_totals[g];
             cur++;
         }
         else
@@ -432,8 +644,6 @@ void Get_G_C_MTX(string in_file, int &N_rows, int &G, int &C, map<int, int> &gen
         }
     }
     N_c.assign(cell_totals.begin(), cell_totals.end());
-
-    return;
 }
 
 std::vector<std::string> Read_CellNames(const std::string &filename)
@@ -456,7 +666,7 @@ std::vector<std::string> Read_CellNames(const std::string &filename)
         {
             line[strlen(line) - 1] = '\0';
         }
-        cell_names.push_back(string(line));
+        cell_names.push_back(std::string(line));
     }
     return cell_names;
 }
@@ -488,7 +698,7 @@ std::vector<std::string> Read_GeneNames(const std::string &filename,
         auto it = gene_idx.find(gene_index);
         if (it != gene_idx.end() && it->second != -1)
         {
-            gene_names.push_back(string(line));
+            gene_names.push_back(std::string(line));
         }
         gene_index++;
     }
