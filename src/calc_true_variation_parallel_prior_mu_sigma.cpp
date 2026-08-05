@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <chrono>
 #include <sstream>
+#include <memory>
 #include <cerrno>
 #include <cstdlib>
 #include <sys/stat.h> // For mkdir on Unix-like systems
@@ -24,6 +25,7 @@
 #include "FitFrac.h"
 #include "Digamma_Trigamma.h"
 #include "Writer.hpp"
+#include "npy_writer.hpp"
 
 std::string VERSION("2.0");
 enum ParseResult
@@ -47,7 +49,7 @@ struct RowComputation
 /***Function declarations ****/
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, int v_method);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
@@ -84,9 +86,10 @@ int main(int argc, char **argv)
     bool no_norm(false);
     int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
     bool gzip_output = false;
+    bool npy_output = false;
     std::string out_suffix = "";
 
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output);
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -218,60 +221,86 @@ int main(int argc, char **argv)
     cmd_file.close();
 
     // -- Open files for writing --
-    if (gzip_output) {out_suffix = ".gz";}
+    std::unique_ptr<npy::NpyStreamWriter> out_delta_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_ddelta_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_mu_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_var_gene_npy;
 
     sanity::Writer out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene,
         out_delta, out_ddelta, out_lik, out_gene, out_cell;
 
-    out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
-    out_exp_lev << std::fixed << std::setprecision(6);
+    if (npy_output) {
+        out_delta_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy"));
+        out_ddelta_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy"));
+        out_mu_npy.reset(new npy::NpyStreamWriter(out_folder + "mu.npy", 1));
+        out_var_gene_npy.reset(new npy::NpyStreamWriter(out_folder + "variance.npy", 1));
 
-    out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
-    out_d_exp_lev << std::fixed << std::setprecision(6);
-
-    out_exp_lev << "GeneID";
-    out_d_exp_lev << "GeneID";
-    for (c = 0; c < C; c++)
-    {
-        out_exp_lev << "\t" << cell_names[c].c_str();
-        out_d_exp_lev << "\t" << cell_names[c].c_str();
-    }
-    out_exp_lev << "\n";
-    out_d_exp_lev << "\n";
-    if (print_extended_output)
-    {
-
-        out_gene.open(out_folder + "geneID.txt" + out_suffix);
-        out_cell.open(out_folder + "cellID.txt" + out_suffix);
-        out_mu.open(out_folder + "mu.txt" + out_suffix);
-        out_mu << std::fixed << std::setprecision(6);
-
-        out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
-        out_dmu << std::fixed << std::setprecision(6);
-
-        out_var_gene.open(out_folder + "variance.txt" + out_suffix);
-        out_var_gene << std::fixed << std::setprecision(6);
-
-        out_delta.open(out_folder + "delta.txt" + out_suffix);
-        out_delta << std::fixed << std::setprecision(6);
-
-        out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
-        out_ddelta << std::fixed << std::setprecision(6);
-
-        out_lik.open(out_folder + "likelihood.txt" + out_suffix);
-        out_lik << std::fixed << std::setprecision(6);
-
-        out_lik << "Variance";
-        for (k = 0; k < (numbin); ++k)
+        out_gene.open(out_folder + "geneID.txt");
+        // save gene names
+        for (g = 0; g < G; g++)
         {
-            out_lik << "\t" << vmin * std::exp(deltav * k);
+            out_gene << gene_names[g].c_str() << "\n";
         }
-        out_lik << "\n";
-
+        out_cell.open(out_folder + "cellID.txt");
         // save cell names
         for (c = 0; c < C; c++)
         {
             out_cell << cell_names[c].c_str() << "\n";
+        }
+    }
+    else {
+        if (gzip_output) {out_suffix = ".gz";}
+
+        out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
+        out_exp_lev << std::fixed << std::setprecision(6);
+
+        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
+        out_d_exp_lev << std::fixed << std::setprecision(6);
+
+        out_exp_lev << "GeneID";
+        out_d_exp_lev << "GeneID";
+        for (c = 0; c < C; c++)
+        {
+            out_exp_lev << "\t" << cell_names[c].c_str();
+            out_d_exp_lev << "\t" << cell_names[c].c_str();
+        }
+        out_exp_lev << "\n";
+        out_d_exp_lev << "\n";
+        if (print_extended_output)
+        {
+
+            out_gene.open(out_folder + "geneID.txt" + out_suffix);
+            out_cell.open(out_folder + "cellID.txt" + out_suffix);
+            out_mu.open(out_folder + "mu.txt" + out_suffix);
+            out_mu << std::fixed << std::setprecision(6);
+
+            out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
+            out_dmu << std::fixed << std::setprecision(6);
+
+            out_var_gene.open(out_folder + "variance.txt" + out_suffix);
+            out_var_gene << std::fixed << std::setprecision(6);
+
+            out_delta.open(out_folder + "delta.txt" + out_suffix);
+            out_delta << std::fixed << std::setprecision(6);
+
+            out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
+            out_ddelta << std::fixed << std::setprecision(6);
+
+            out_lik.open(out_folder + "likelihood.txt" + out_suffix);
+            out_lik << std::fixed << std::setprecision(6);
+
+            out_lik << "Variance";
+            for (k = 0; k < (numbin); ++k)
+            {
+                out_lik << "\t" << vmin * std::exp(deltav * k);
+            }
+            out_lik << "\n";
+
+            // save cell names
+            for (c = 0; c < C; c++)
+            {
+                out_cell << cell_names[c].c_str() << "\n";
+            }
         }
     }
 
@@ -327,44 +356,57 @@ int main(int argc, char **argv)
                     logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(G));
                 }
 
-                out_exp_lev << gene_names[g];
-                out_d_exp_lev << gene_names[g];
-                for (c = 0; c < C; c++)
-                {
-                    out_exp_lev << "\t" << result.mu + result.delta[c];
-                    out_d_exp_lev << "\t" << std::sqrt(result.var_mu + result.var_delta[c]);
-                    if (print_extended_output)
+                // write output
+                if (npy_output) {
+                    out_delta_npy->write_row(result.delta);
+                    // transform var_delta to standard deviation before writing to file
+                    for (double &v : result.var_delta) {
+                        v = std::sqrt(v);
+                    }
+                    out_ddelta_npy->write_row(result.var_delta);
+                    out_mu_npy->write_row(&result.mu, 1);
+                    out_var_gene_npy->write_row(&result.var_gene, 1);
+                }
+                else {
+                    out_exp_lev << gene_names[g];
+                    out_d_exp_lev << gene_names[g];
+                    for (c = 0; c < C; c++)
                     {
-                        out_delta << result.delta[c];
-                        out_ddelta << std::sqrt(result.var_delta[c]);
-                        if (c < C - 1)
+                        out_exp_lev << "\t" << result.mu + result.delta[c];
+                        out_d_exp_lev << "\t" << std::sqrt(result.var_mu + result.var_delta[c]);
+                        if (print_extended_output)
                         {
-                            out_delta << "\t";
-                            out_ddelta << "\t";
+                            out_delta << result.delta[c];
+                            out_ddelta << std::sqrt(result.var_delta[c]);
+                            if (c < C - 1)
+                            {
+                                out_delta << "\t";
+                                out_ddelta << "\t";
+                            }
                         }
                     }
-                }
-                out_exp_lev << "\n";
-                out_d_exp_lev << "\n";
+                    out_exp_lev << "\n";
+                    out_d_exp_lev << "\n";
 
-                if (print_extended_output)
-                {
-                    out_delta << "\n";
-                    out_ddelta << "\n";
-                    // Write gene names
-                    out_gene << gene_names[g].c_str() << "\n";
-                    // print best fit to file : mu, delta
-                    //  Print diagonal of invM : variance of mu, delta
-                    out_mu << result.mu << "\n";
-                    out_dmu << std::sqrt(result.var_mu) << "\n";
-                    out_var_gene << result.var_gene << "\n";
-                    // Write likelihood
-                    out_lik << gene_names[g];
-                    for (k = 0; k < numbin; ++k)
+                    if (print_extended_output)
                     {
-                        out_lik << "\t" << result.lik[k];
+                        out_delta << "\n";
+                        out_ddelta << "\n";
+                        // Write gene names
+                        out_gene << gene_names[g].c_str() << "\n";
+                        // print best fit to file : mu, delta
+                        //  Print diagonal of invM : variance of mu, delta
+                        out_mu << result.mu << "\n";
+                        out_dmu << std::sqrt(result.var_mu) << "\n";
+                        out_var_gene << result.var_gene << "\n";
+                        // Write likelihood
+                        out_lik << gene_names[g];
+                        for (k = 0; k < numbin; ++k)
+                        {
+                            out_lik << "\t" << result.lik[k];
+                        }
+                        out_lik << "\n";
                     }
-                    out_lik << "\n";
                 }
             }
         }
@@ -649,7 +691,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
     return e * e;
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output)
 {
 
     if (argc < 2)
@@ -680,11 +722,11 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         }
     }
 
-    int N_param(12);
+    int N_param(13);
     std::string extended_output("false");
     std::string no_norm_str("false");
     std::string v_method_str("MAP");
-    std::string to_find[12][2] = {{"-f", "--file"},
+    std::string to_find[13][2] = {{"-f", "--file"},
                              {"-d", "--destination"},
                              {"-n", "--n_threads"},
                              {"-e", "--extended_output"},
@@ -695,7 +737,8 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-mtx_cells", "--mtx_cell_name_file"},
                              {"-no_norm", "--no_cell_size_normalization"},
                              {"-v_m", "--v_method"},
-                             {"--gz", "--gzip-output"}};
+                             {"--gz", "--gzip-output"},
+                             {"--npy", "--npy-output"}};
 
     int j;
     int idx;
@@ -710,6 +753,11 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 {
                     gzip_output = true;
                     continue; // no argument expected for --gz
+                }
+                if (j == 12)
+                {
+                    npy_output = true;
+                    continue; // no argument expected for --npy
                 }
                 idx = i;
                 if (idx + 1 > argc - 1)
@@ -777,6 +825,12 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     else {
         logging_debug("Invalid method specified for variance estimation.");
         return ERROR;
+    }
+
+    // if npy is on the turn off gzip output and print extended output
+    if(npy_output){
+        gzip_output = false;
+        print_extended_output = false;
     }
 
     // Get input file extension

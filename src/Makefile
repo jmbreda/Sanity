@@ -1,14 +1,17 @@
 CC=g++
-CFLAGS= -I. -std=c++11 -O3 -march=native -flto=auto -fopenmp -fno-math-errno
+CFLAGS= -I. -std=c++17 -O3 -march=native -flto=auto -fopenmp -fno-math-errno
 # Perhaps you need to add a path to omp headers like -I/path/to/omp/headers
 # OSX clang does not support omp by default, you need to install library and compiler separately (e.g. homebrew)
 # For OSX you need to change -march to -mcpu or remove it
 LDFLAGS= -lz
-Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o
-	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o $(LDFLAGS)
+Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o
+	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o $(LDFLAGS)
 
-calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp
+calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp npy_writer.hpp
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
+
+npy_writer.o: npy_writer.cpp npy_writer.hpp
+	$(CC) $(CFLAGS) -c npy_writer.cpp
 
 ReadInputFiles.o: ReadInputFiles.cpp ReadInputFiles.h
 	$(CC) $(CFLAGS) -c ReadInputFiles.cpp
