@@ -7,7 +7,7 @@ LDFLAGS= -lz
 Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o $(LDFLAGS)
 
-calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h
+calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
 
 ReadInputFiles.o: ReadInputFiles.cpp ReadInputFiles.h
@@ -21,7 +21,6 @@ FukushimaLambertW.o: FukushimaLambertW.cc FukushimaLambertW.h
 
 Digamma_Trigamma.o: Digamma_Trigamma.cpp Digamma_Trigamma.h
 	$(CC) $(CFLAGS) -c Digamma_Trigamma.cpp
-
 
 Sanity_distance: compute_distance.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity_distance compute_distance.o

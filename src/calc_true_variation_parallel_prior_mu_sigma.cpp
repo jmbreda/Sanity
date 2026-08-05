@@ -23,6 +23,7 @@
 #include "ReadInputFiles.h"
 #include "FitFrac.h"
 #include "Digamma_Trigamma.h"
+#include "Writer.hpp"
 
 std::string VERSION("2.0");
 enum ParseResult
@@ -46,7 +47,7 @@ struct RowComputation
 /***Function declarations ****/
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, int v_method);
 double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
@@ -82,8 +83,10 @@ int main(int argc, char **argv)
     int numbin = 160;
     bool no_norm(false);
     int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
+    bool gzip_output = false;
+    std::string out_suffix = "";
 
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method);
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -215,17 +218,15 @@ int main(int argc, char **argv)
     cmd_file.close();
 
     // -- Open files for writing --
-    std::ofstream out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene,
+    if (gzip_output) {out_suffix = ".gz";}
+
+    sanity::Writer out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene,
         out_delta, out_ddelta, out_lik, out_gene, out_cell;
 
-
-    std::ofstream(out_folder + "log_transcription_quotients.txt", std::ios::trunc).close();
-    std::ofstream(out_folder + "ltq_error_bars.txt", std::ios::trunc).close();
-
-    out_exp_lev.open(out_folder + "log_transcription_quotients.txt", std::ios::app);
+    out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
     out_exp_lev << std::fixed << std::setprecision(6);
 
-    out_d_exp_lev.open(out_folder + "ltq_error_bars.txt", std::ios::app);
+    out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
     out_d_exp_lev << std::fixed << std::setprecision(6);
 
     out_exp_lev << "GeneID";
@@ -239,33 +240,25 @@ int main(int argc, char **argv)
     out_d_exp_lev << "\n";
     if (print_extended_output)
     {
-        std::ofstream(out_folder + "geneID.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "cellID.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "mu.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "d_mu.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "variance.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "delta.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "d_delta.txt", std::ios::trunc).close();
-        std::ofstream(out_folder + "likelihood.txt", std::ios::trunc).close();
 
-        out_gene.open(out_folder + "geneID.txt", std::ios::app);
-        out_cell.open(out_folder + "cellID.txt", std::ios::app);
-        out_mu.open(out_folder + "mu.txt", std::ios::app);
+        out_gene.open(out_folder + "geneID.txt" + out_suffix);
+        out_cell.open(out_folder + "cellID.txt" + out_suffix);
+        out_mu.open(out_folder + "mu.txt" + out_suffix);
         out_mu << std::fixed << std::setprecision(6);
 
-        out_dmu.open(out_folder + "d_mu.txt", std::ios::app);
+        out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
         out_dmu << std::fixed << std::setprecision(6);
 
-        out_var_gene.open(out_folder + "variance.txt", std::ios::app);
+        out_var_gene.open(out_folder + "variance.txt" + out_suffix);
         out_var_gene << std::fixed << std::setprecision(6);
 
-        out_delta.open(out_folder + "delta.txt", std::ios::app);
+        out_delta.open(out_folder + "delta.txt" + out_suffix);
         out_delta << std::fixed << std::setprecision(6);
 
-        out_ddelta.open(out_folder + "d_delta.txt", std::ios::app);
+        out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
         out_ddelta << std::fixed << std::setprecision(6);
 
-        out_lik.open(out_folder + "likelihood.txt", std::ios::app);
+        out_lik.open(out_folder + "likelihood.txt" + out_suffix);
         out_lik << std::fixed << std::setprecision(6);
 
         out_lik << "Variance";
@@ -656,7 +649,7 @@ double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
     return e * e;
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output)
 {
 
     if (argc < 2)
@@ -687,11 +680,11 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         }
     }
 
-    int N_param(11);
+    int N_param(12);
     std::string extended_output("false");
     std::string no_norm_str("false");
     std::string v_method_str("MAP");
-    std::string to_find[11][2] = {{"-f", "--file"},
+    std::string to_find[12][2] = {{"-f", "--file"},
                              {"-d", "--destination"},
                              {"-n", "--n_threads"},
                              {"-e", "--extended_output"},
@@ -701,7 +694,8 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-mtx_genes", "--mtx_gene_name_file"},
                              {"-mtx_cells", "--mtx_cell_name_file"},
                              {"-no_norm", "--no_cell_size_normalization"},
-                             {"-v_m", "--v_method"}};
+                             {"-v_m", "--v_method"},
+                             {"--gz", "--gzip-output"}};
 
     int j;
     int idx;
@@ -712,6 +706,11 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         {
             if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1])
             {
+                if (j == 11)
+                {
+                    gzip_output = true;
+                    continue; // no argument expected for --gz
+                }
                 idx = i;
                 if (idx + 1 > argc - 1)
                 {
