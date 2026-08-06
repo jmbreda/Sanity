@@ -663,10 +663,6 @@ std::vector<std::string> Read_CellNames(const std::string &filename)
     char *line = nullptr;
     while ((line = infp.getline()) != nullptr)
     {
-        if (line[strlen(line) - 1] == '\r')
-        {
-            line[strlen(line) - 1] = '\0';
-        }
         cell_names.push_back(std::string(line));
     }
     return cell_names;
@@ -691,10 +687,6 @@ std::vector<std::string> Read_GeneNames(const std::string &filename,
     int gene_index = 0;
     while ((line = infp.getline()) != nullptr)
     {
-        if (line[strlen(line) - 1] == '\r')
-        {
-            line[strlen(line) - 1] = '\0';
-        }
         // Only add gene if its index in gene_idx is not -1
         auto it = gene_idx.find(gene_index);
         if (it != gene_idx.end() && it->second != -1)
