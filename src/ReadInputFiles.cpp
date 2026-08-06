@@ -595,7 +595,7 @@ void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int,
         // Sorted-by-row check: smaller row index cannot follow larger
         if (last_row_index > g_idx)
         {
-            fprintf(stderr, "Error: MTX file %s is not sorted by row. Row %d appears after row %d.\n", in_file.c_str(), g_idx + 1, last_row_index + 1);
+            fprintf(stderr, "Error: MTX file %s is not sorted by row. Row %d appears after row %d.\nRun scripts/sort_mtx_by_row.py on the file to sort it, e.g.: python3 sort_mtx_by_row.py -i %s\n", in_file.c_str(), g_idx + 1, last_row_index + 1, in_file.c_str());
             infp.close();
             exit(EXIT_FAILURE);
         }
