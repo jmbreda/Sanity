@@ -4,7 +4,7 @@
 #include <iomanip> // Required for setprecision
 #include <cmath>
 
-double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double a, double b, double prev_q) {
+double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double prev_q) {
     double q, W, x, dq, funcq;
     int i;
     double *Q = new double [C];

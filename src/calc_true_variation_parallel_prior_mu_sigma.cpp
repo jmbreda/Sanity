@@ -47,8 +47,8 @@ struct RowComputation
 };
 
 /***Function declarations ****/
-RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, double a, double b, int v_method);
-double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
+RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, int v_method);
+double get_epsilon_2(double &d, double &v, double &n, double &f);
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
@@ -177,9 +177,6 @@ int main(int argc, char **argv)
         }
     }
 
-    // alpha and beta of gamma prior on mu
-    double a = 1.0;
-    double b = 0.0;
     double deltav = std::log(vmax / vmin) / ((double)numbin - 1);
 
     // create output folder if it does not exist
@@ -319,7 +316,7 @@ int main(int argc, char **argv)
         for (int g = 0; g < G; ++g)
         {
             std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
-            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, a, b, v_method);
+            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, v_method);
             #pragma omp ordered
             {
                 // output esimated running time
@@ -424,7 +421,7 @@ int main(int argc, char **argv)
 }
 
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c,
-                                         double n, double vmin, double vmax, int C, int numbin, double a, double b,
+                                         double n, double vmin, double vmax, int C, int numbin,
                                          int v_method)
 {
     // n = total counts for the gene
@@ -465,7 +462,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     {
         v = vmin * std::exp(deltav * k);
         beta = 1.0 / (n * v);
-        q = fitfrac(f, n_c, n, v, C, N_c, a, b, prev_q);
+        q = fitfrac(f, n_c, n, v, C, N_c, prev_q);
         prev_q = q;
         mu_v[k] = Psi_0(n) - q; /*** equation (85) ***/
 
@@ -493,7 +490,6 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
             ldet += std::log(f[i] + beta);
         }
         L -= 0.5 * ldet;
-        // substract prior with a = 1, b = 1 ( log(v^a*exp(-b*v)) = alog(v) - bv
         lik[k] = L;
 
         if (L > Lmax)
@@ -531,7 +527,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         {
             if (n_c[i] <= 0.5)
             {
-                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i], v, n, f[i], a);
+                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i], v, n, f[i]);
             }
         }
     } // end v bins loop
@@ -555,6 +551,8 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         vindex = Lmax_ind;
     }
     else if(v_method == 2){
+        // Dividing the normalised likelihood by v applies an implicit 1/v (Jeffreys) prior on the
+        // gene variance. This is the only prior in effect anywhere in this computation.
         double mapmax = -1e+100;
         for (k = 0; k < numbin; k++)    {
             double curv = vmin * std::exp(deltav * k);
@@ -667,7 +665,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     return result;
 }
 
-double get_epsilon_2(double &d, double &v, double &n, double &f, double &a)
+double get_epsilon_2(double &d, double &v, double &n, double &f)
 {
 
     double e;
