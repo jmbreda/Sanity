@@ -133,10 +133,7 @@ make
 ```
 Sanity/bin/Sanity
 ```
-* Alternatively, the already compiled binary for macOS is located in
-```
-Sanity/bin/Sanity_macOS
-```
+* Alternatively, pre-built binaries are published on the repository's [Releases](https://github.com/jmbreda/Sanity/releases) page.
 
 ## Sanity_distance
 Compute cell-cell distances from Sanity output files. Needs extended outputs of Sanity (`-e 1` option).
