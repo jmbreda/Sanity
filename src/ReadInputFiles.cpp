@@ -614,6 +614,7 @@ void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int,
             G++;
             row_blocks_tmp[g_idx].offset = offset;
             row_blocks_tmp[g_idx].nnz = 1;
+            row_blocks_tmp[g_idx].row_index = g_idx;
         }
         else
         {

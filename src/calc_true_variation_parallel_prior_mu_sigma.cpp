@@ -911,6 +911,15 @@ std::vector<double> fetch_row(int g, FileReader &thread_reader, const std::strin
             line = thread_reader.getline();
             token = strtok_r(line, " \t\r\n", &saveptr);
             int g_idx = std::stoi(token) - 1; // Convert to 0-based index
+            // Guard against a stale offset silently reading another gene's counts. Compare against
+            // the row index recorded when the offset table was built, not g: g is the position in
+            // mtx_rows, which skips zero-count genes and so need not equal the mtx row index.
+            if (g_idx != row_block.row_index)
+            {
+                throw std::runtime_error("RowReader: expected gene index " + std::to_string(row_block.row_index + 1) +
+                                         " but found " + std::to_string(g_idx + 1) +
+                                         ". The input file is likely malformed or its offset table is stale.");
+            }
             token = strtok_r(NULL, " \t\r\n", &saveptr);
             int c_idx = std::stoi(token) - 1; // Convert to 0-based index
             token = strtok_r(NULL, " \t\r\n", &saveptr);

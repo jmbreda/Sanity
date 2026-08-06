@@ -14,7 +14,9 @@ struct RowBlock
 {
     long long offset;
     std::size_t nnz;
-    RowBlock() : offset(-1), nnz(0) {}
+    int row_index; // 0-based row index in the mtx file, which differs from the position in
+                   // mtx_rows because zero-count genes are dropped when that vector is built
+    RowBlock() : offset(-1), nnz(0), row_index(-1) {}
 };
 
 // Wrapper class for transparent gzip/plain file reading
