@@ -15,6 +15,6 @@ double Psi_1(double x){
     if ( x == 1.0 )
     	return 1.644934066848226;
     else
-		return 1.0/x + 1.0/(2.0*std::pow(x,2)) + 1.0/(6.0*std::pow(x,3)) - 1.0/(30.0*std::pow(x,5)) + 1.0/(42.0*std::pow(x,7)) - 1.0/(30.0*std::pow(x,9)) - 5.0/(66.0*std::pow(x,11)) - 691.0/(2730.0*std::pow(x,13)) + 7.0/(6.0*std::pow(x,15));
+		return 1.0/x + 1.0/(2.0*std::pow(x,2)) + 1.0/(6.0*std::pow(x,3)) - 1.0/(30.0*std::pow(x,5)) + 1.0/(42.0*std::pow(x,7)) - 1.0/(30.0*std::pow(x,9)) + 5.0/(66.0*std::pow(x,11)) - 691.0/(2730.0*std::pow(x,13)) + 7.0/(6.0*std::pow(x,15));
 
 }

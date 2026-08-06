@@ -12,3 +12,4 @@
 ### Changed
 - By default, *Sanity* will use the MAP method for calculating v_g, if not specified otherwise.
 - No `*_vmax` output files. For all methods the output files are named the same.
+- Fixed a sign error in the trigamma asymptotic series, which slightly affected the error bars on mu (and hence `d_mu.txt` and `ltq_error_bars.txt`) for genes with very low total counts, by under 1e-4 relative.

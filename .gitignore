@@ -9,3 +9,4 @@ src/calc_true_variation_parallel_prior_mu_sigma.o
 tests/compare.log
 .DS_Store
 /bin
+/local_files
