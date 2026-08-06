@@ -1,8 +1,31 @@
-CC=g++
-CFLAGS= -I. -std=c++17 -O3 -march=native -flto=auto -fopenmp -fno-math-errno
-# Perhaps you need to add a path to omp headers like -I/path/to/omp/headers
-# OSX clang does not support omp by default, you need to install library and compiler separately (e.g. homebrew)
-# For OSX you need to change -march to -mcpu or remove it
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+ifeq ($(UNAME_S),Darwin)
+    # Apple's clang (installed as g++/c++) does not support -fopenmp, so we
+    # need a real GCC. Install one with `brew install gcc`, or pass your own
+    # compiler on the command line, e.g. `make CC=g++-mp-13` for MacPorts.
+    ifneq ($(origin CC),command line)
+        GCC_PREFIX := $(shell brew --prefix gcc 2>/dev/null)
+        ifeq ($(GCC_PREFIX),)
+            $(error GCC not found. Install it with: brew install gcc)
+        endif
+        CC := $(lastword $(sort $(wildcard $(GCC_PREFIX)/bin/g++-*)))
+        ifeq ($(CC),)
+            $(error No g++-* binary found under $(GCC_PREFIX)/bin. Install GCC with: brew install gcc)
+        endif
+    endif
+    ifeq ($(UNAME_M),arm64)
+        ARCH_FLAG := -mcpu=native
+    else
+        ARCH_FLAG := -march=native
+    endif
+else
+    CC=g++
+    ARCH_FLAG := -march=native
+endif
+
+CFLAGS= -I. -std=c++17 -O3 $(ARCH_FLAG) -flto=auto -fopenmp -fno-math-errno
 LDFLAGS= -lz
 Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o $(LDFLAGS)
@@ -34,7 +57,7 @@ compute_distance.o: compute_distance.cpp
 Sanity_gene_correlation:  compute_gene_correlations.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity_gene_correlation compute_gene_correlations.o
 
-compute_gene_correlation.o: compute_gene_correlations.cpp
+compute_gene_correlations.o: compute_gene_correlations.cpp
 	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
 
 clean:

@@ -109,22 +109,20 @@ git clone https://github.com/jmbreda/Sanity.git
 	sudo apt-get update
 	sudo apt-get install libgomp1
 	```
-	
-    Examples below are for gcc version 9, but should work with other versions as well. If you have a different version of gcc, please change the version number in the commands below accordingly.
-    
-	* On mac OS using macports  
-	Install the `gcc9` package
-	```
-	port install gcc9
-	```
-	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Change the first line of `src/Makefile` from `CC=g++` to `CC=g++-mp-9`
-	
-	* On mac OS using brew  
-	Install the `gcc9` package  
-	```
-	brew install gcc9
-	```
-	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Change the first line of `src/Makefile` from `CC=g++` to `CC=g++-9`
+	* On mac OS  
+	Apple's own `g++`/`clang++` does not support OpenMP, so you need a real GCC.
+
+		* Using brew (recommended)  
+		```
+		brew install gcc
+		```
+		The Makefile detects this automatically and picks the right `g++` binary, no further changes needed.
+
+		* Using macports  
+		```
+		port install gcc13
+		```
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tell the Makefile to use it by compiling with `make CC=g++-mp-13` (adjust the version number to the package you installed).
 * Move to the source code directory and compile.
 ```
 cd Sanity/src
