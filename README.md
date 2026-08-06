@@ -195,5 +195,8 @@ Example usage:
 python3 sort_mtx_by_row.py -i input.mtx
 ```
 
+## Tests
+A simple test comparing Sanity's output across the `-v_m` methods (MAP, EAP, MLE, MARG) on a small count matrix is available in the `tests` directory. See [tests/README.md](tests/README.md) for details on running it.
+
 ## Help
 For any questions or assistance regarding Sanity, please post your question in the issues section.
