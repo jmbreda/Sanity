@@ -147,7 +147,13 @@ int main(int argc, char **argv)
         Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, tsv_offsets, N_c, n, cell_names, gene_names, N_threads);
         logging_debug("There were " + std::to_string(N_rows) + " rows");
     }
-    logging_debug("There were " + std::to_string(G) + " genes and " + std::to_string(C) + " cells");
+    std::string genes_message = "The input contained " + std::to_string(N_rows) + " rows for " + std::to_string(C) +
+                                 " cells, and " + std::to_string(G) + " of these genes had at least one count in the dataset.";
+    if (N_rows != G)
+    {
+        genes_message += " " + std::to_string(N_rows - G) + " genes were thus removed because no counts were detected.";
+    }
+    logging_debug(genes_message);
 
     int g, c, k;
 
