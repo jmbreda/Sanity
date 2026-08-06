@@ -11,7 +11,7 @@ the Poisson noise on the UMI count matrix *n<sub>gc</sub>* of gene *g* in cell *
 
 
 ### Reproducibility
-The raw UMI count and normalized datasets mentioned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named [*dataset name*]\_UMI\_counts.txt.gz and [*dataset name*]\_[*tool name*]\_normalization.txt.gz.
+The raw UMI count and normalized datasets mentioned in benchmarking in the associated [publication](https://www.nature.com/articles/s41587-021-00875-x) are available on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4009187.svg)](https://zenodo.org/record/4009187). Files are named `[dataset name]_UMI_counts.txt.gz` and `[dataset name]_[tool name]_normalization.txt.gz`.
 
 The scripts used for running the bechmarked normalization methods and for making the figures of the preprint are in the reproducibility folder.
 
@@ -30,22 +30,22 @@ The count matrix can be compressed with gzip (with `.gz` extension).
 * `-f`: (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Example: `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
 **Importnt**: MTX file should be sorted by row (gene) indices! If not then you can use `sort_mtx_by_row.py` script in the `Sanity/scripts` folder to sort it. See [Sorting MTX file by row (gene) indices](#sorting-mtx-file-by-row-gene-indices).
 The MTX file can be compressed with gzip (with `.gz` extension).
-	* `-mtx_cells`: (optional) Gene ID file: text file with one gene ID per line. The order of gene IDs should match the order of genes in the count matrix. Examples: `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
-	* `-mtx_genes`: (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
+	* `-mtx_genes`: (optional) Gene ID file: text file with one gene ID per line. The order of gene IDs should match the order of genes in the count matrix. Examples: `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
+	* `-mtx_cells`: (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * `-d`: (optional) Destination folder (`'path/to/output/folder'`, default: `cwd`)
 * `-n`: (optional) Number of threads (integer, default: `4`)
 * `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
-* `-v_m`: (optional) Choose the method to estimate gene-variances $v_g$. The choice is:
+* `-v_m`: (optional, expert-user-only) Choose the method to estimate gene-variances $v_g$. In the MAP, EAP, MLE-options, one value for $v_g$ is fixed, and the corresponding gene expression estimates are returned, in the MARG-option, the gene expression estimates are obtained by marginalizing $v_g$. The options are:
     * MAP (**default**): Use the maximum a posteriori estimate for $v_g$.
     * EAP: expected value of $v_g$ over the posterior.
     * MLE: maximum likelihood estimate for $v_g$.
-    * MARG: original method of integration over the posterior of $v_g$.
-* `-vmin/-vmax`: (optional) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
-* `-nbin`: (optional) Number of bins for the variance in log transcription quotients (integer, default: `160`)
-* `-no_norm`: (optional) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
+    * MARG: (original method) the EAP-estimate  integration over the posterior of $v_g$.
+* `-vmin/-vmax`: (optional, expert-user-only) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
+* `-nbin`: (optional, expert-user-only) Number of bins for the variance in log transcription quotients (integer, default: `160`)
+* `-no_norm`: (optional, expert-user-only) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 ## Output
 
-* log_transcription_quotients.txt: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
+* `log_transcription_quotients.txt`: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -53,7 +53,7 @@ The MTX file can be compressed with gzip (with `.gz` extension).
   | Gene 2 |  -9.96744 | -10.2522 | -10.1453 |
   | ... | |
   
-* ltq_error_bars.txt : Table with the error-bars on the estimates of the LTQs *x<sub>gc</sub>* for each gene *g* in each cell *c*.
+* `ltq_error_bars.txt`: Table with the error-bars on the estimates of the LTQs *x<sub>gc</sub>* for each gene *g* in each cell *c*.
 
   | GeneID | Cell 1 | Cell 2 | Cell 3 | ...
   |:-------|:------:|:------:|:------:|------:|
@@ -64,12 +64,12 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 
 ## Extended output (optional)
 
-* mu.txt : Estimated average LTQ *&mu;<sub>g</sub>* of each gene *g* averaged over all cells.One value per line. Order corresponds to the order of genes in the ``gensID.txt` file.
-* d_mu.txt : Error bars on the inferred mean LTQs *&mu;<sub>g</sub>*. TSV file, collumns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
-* variance.txt : Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file log_transcription_quotients.txt. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly adviced to use the results in this file. Order corresponds to the order of genes in the ``gensID.txt` file.
-* delta.txt : Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*. TSV file, collumns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
-* d_delta.txt : Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*. TSV file, collumns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
-* likelihood.txt : This file encodes the posterior distribution of each gene’s true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains a matrix with likelihoods for each gene *g* and each bin *b*. First line correspond to the bin centers *v<sub>b</sub>*, and the following lines correspond to the likelihood values of genes.
+* `mu.txt`: Estimated average LTQ *&mu;<sub>g</sub>* of each gene *g* averaged over all cells.One value per line. Order corresponds to the order of genes in the `geneID.txt` file.
+* `d_mu.txt`: Error bars on the inferred mean LTQs *&mu;<sub>g</sub>*. TSV file, collumns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
+* `variance.txt`: Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file `log_transcription_quotients.txt`. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly adviced to use the results in this file. Order corresponds to the order of genes in the `geneID.txt` file.
+* `delta.txt`: Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*. TSV file, collumns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
+* `d_delta.txt`: Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*. TSV file, collumns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
+* `likelihood.txt`: This file encodes the posterior distribution of each gene's true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains a matrix with likelihoods for each gene *g* and each bin *b*. First line correspond to the bin centers *v<sub>b</sub>*, and the following lines correspond to the likelihood values of genes.
 
   | | | | | |
   |:-------|:------:|:------:|:------:|------:|
@@ -183,7 +183,7 @@ Sanity/bin/Sanity_distance
 <a name="sorting-mtx-file-by-row-gene-indices"></a>
 ### Sorting MTX file by row (gene) indices
 
-Use script `sort_mtx_by_row.py` in the `Sanity/scripts` folder to sort the MTX file by row (gene) indices. The script takes as input the MTX file. The output is a sorted MTX file by default saved as sorted_[original filename].gz in the same folder as the input file. User can specify the output file name and path with the `-o` option. The saved MTX file is compressed with gzip.
+Use script `sort_mtx_by_row.py` in the `Sanity/scripts` folder to sort the MTX file by row (gene) indices. The script takes as input the MTX file. The output is a sorted MTX file by default saved as `sorted_[original filename].gz` in the same folder as the input file. User can specify the output file name and path with the `-o` option. The saved MTX file is compressed with gzip.
 
 Requirements: Python3, sort
 
