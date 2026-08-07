@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iomanip> // Required for setprecision
 #include <cmath>
+#include <stdexcept>
 
 double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double prev_q) {
     double q, W, x, dq, funcq;
@@ -15,7 +16,7 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, i
     q = 0.0;
     for(i=0;i<C;++i){
         Q[i] = std::log( N_c[i]) + n_c[i]*v + logbeta;//Q[i] = y_gc +log(nv) = log(Nc)+nc v + log(beta)
-        q += N_c[i]; //q = log[sum_c N_c]
+        q += N_c[i]; //accumulate q = sum_c N_c; the log is taken after the loop
     }
     //Initial guess for q is q = log(sum_c Nc))+v/2 because at optimum q = log[ sum_c Nc exp(delta_c)] and expectation of exp(delta_c) is exp(v/2)
     q = std::log(q) + 0.5*v;
@@ -95,7 +96,6 @@ double fq(double *Q,int C,double beta, double q){
     for(i=0;i<C;++i){
         x = Q[i] - q;
         if(std::isnan(x)){
-            //cout << "x = nan !\n";
             throw std::runtime_error("Error: x is NaN in fq function.");
         }
         if(x > 50.0){

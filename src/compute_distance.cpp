@@ -1,18 +1,13 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <iterator>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <cmath>
 #include <omp.h>
-#include <time.h>
 
 using namespace std;
-
-// Compile :
-// g++ -std=c++11 -O2 -ffast-math -O3 -fopenmp compute_distance.cpp -o Sanity_distance
 
 // Distances functions :
 // with error bars:

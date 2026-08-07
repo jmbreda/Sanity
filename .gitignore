@@ -10,3 +10,4 @@ tests/compare.log
 .DS_Store
 /bin
 /local_files
+*.o

@@ -471,7 +471,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         for (i = 0; i < C; ++i)
         {
             delta_v[k][i] = std::log(f[i]) - std::log(N_c[i]) + q; // equation (67)
-            L += n_c[i] * delta_v[k][i];                 // Bug fix: remove a term as in Equation 19 of Sanity paper SI
+            L += n_c[i] * delta_v[k][i];                 // data term sum_c n_c*delta_c, as in Equation 19 of Sanity paper SI
             delsq += delta_v[k][i] * delta_v[k][i];
         }
         L -= delsq / (2 * v); // (56) 2nd term
