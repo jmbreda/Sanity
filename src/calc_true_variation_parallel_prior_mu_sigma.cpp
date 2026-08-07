@@ -48,7 +48,7 @@ struct RowComputation
 
 /***Function declarations ****/
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method);
-double get_epsilon_2(double &d, double &v, double &n, double &f);
+double get_epsilon_2(double d, double v, double n, double f);
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
@@ -676,7 +676,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     return result;
 }
 
-double get_epsilon_2(double &d, double &v, double &n, double &f)
+double get_epsilon_2(double d, double v, double n, double f)
 {
 
     double e;

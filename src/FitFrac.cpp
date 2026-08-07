@@ -5,7 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 
-double fitfrac(double *f, const std::vector<double>& n_c, double n, double &v, int C, const std::vector<double>& N_c, double prev_q) {
+double fitfrac(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double prev_q) {
     double q, W, x, dq, funcq;
     int i;
     double *Q = new double [C];
