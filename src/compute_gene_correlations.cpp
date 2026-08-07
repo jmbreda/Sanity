@@ -209,8 +209,15 @@ int main(int argc, char** argv){
 	if(s2n_cutoff > 0.0)
 	  {
 	    string s2n_str = to_string(s2n_cutoff);
-	    while(s2n_str.back() == '0' || s2n_str.back()=='.')
-	      s2n_str = s2n_str.substr(0, s2n_str.size()-1);
+	    // Strip trailing zeros from the fractional part only, then the '.' itself.
+	    // Stopping at the '.' is what keeps 10 -> "10" rather than "1".
+	    if(s2n_str.find('.') != string::npos)
+	      {
+	        while(s2n_str.back() == '0')
+	          s2n_str = s2n_str.substr(0, s2n_str.size()-1);
+	        if(s2n_str.back() == '.')
+	          s2n_str = s2n_str.substr(0, s2n_str.size()-1);
+	      }
 	    out_file += "_s2n_gt_" + s2n_str;
 	  }
 	out_file += ".txt";
