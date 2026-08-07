@@ -66,15 +66,15 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 ## Extended output (optional)
 
 * `mu.txt`: Estimated average LTQ *&mu;<sub>g</sub>* of each gene *g* averaged over all cells.One value per line. Order corresponds to the order of genes in the `geneID.txt` file.
-* `d_mu.txt`: Error bars on the inferred mean LTQs *&mu;<sub>g</sub>*. TSV file, columns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
+* `d_mu.txt`: Error bars on the inferred mean LTQs *&mu;<sub>g</sub>*. One value per line. Order corresponds to the order of genes in the `geneID.txt` file.
 * `variance.txt`: Estimated variance of the LTQs *x<sub>gc</sub>* across cells *c* for each gene *g*. Note that these variances are different, and generally larger, than what one would obtain when directly calculating the variance of the estimates of *x<sub>gc</sub>* from the file `log_transcription_quotients.txt`. This is because the estimates in this file take into account the uncertainty on the estimates of the *x<sub>gc</sub>*. Thus, when estimates of true gene expression variability are needed, you are strongly advised to use the results in this file. Order corresponds to the order of genes in the `geneID.txt` file.
 * `delta.txt`: Matrix of inferred log-fold changes *&delta;<sub>gc</sub> = x<sub>gc</sub>-&mu;<sub>g</sub>* for each gene *g* in each cell *c*. TSV file, columns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
 * `d_delta.txt`: Matrix of error-bars for the inferred log fold-changes *&delta;<sub>gc</sub>*. TSV file, columns correspond to cell IDs from `cellID.txt` file, rows correspond to gene IDs from `geneID.txt` file.
-* `likelihood.txt`: This file encodes the posterior distribution of each gene's true variance in log-expression. For the numerical calculation of this distribution, the variance is a prior assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]* and is discretized into *N<sub>b</sub>* bins uniformly on a logarithmic scale. The file contains a matrix with likelihoods for each gene *g* and each bin *b*. First line correspond to the bin centers *v<sub>b</sub>*, and the following lines correspond to the likelihood values of genes.
+* `likelihood.txt`: This file encodes the posterior distribution of each gene's true variance in log-expression. For the numerical calculation of this distribution, the variance is a priori assumed to lie in the range *[v<sub>min</sub>,v<sub>max</sub>]*, and the distribution is evaluated on a grid of *N<sub>b</sub>* values spaced uniformly on a logarithmic scale. The file contains a matrix with likelihoods for each gene *g* and each grid point *b*. The first line lists the grid values *v<sub>b</sub> = v<sub>min</sub> exp(b &middot; &Delta;v)* for *b = 0,...,N<sub>b</sub>-1* with *&Delta;v = log(v<sub>max</sub>/v<sub>min</sub>)/(N<sub>b</sub>-1)*, so the first and last values are *v<sub>min</sub>* and *v<sub>max</sub>* themselves; the following lines correspond to the likelihood values of genes.
 
   | | | | | |
   |:-------|:------:|:------:|:------:|:---:|
-  | Variance | 0.01 | 0.0107 | 0.0114 | ... |
+  | Variance | 0.001000 | 0.001070 | 0.001146 | ... |
   | Gene 1 | 0.018 | 0.019 | 0.020 | ... |
   | Gene 2 | 0.0006 | 0.0051 | 0.0031 | ... |
   | ... | ... | ... | ... | ... |
