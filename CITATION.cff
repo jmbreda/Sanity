@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use Sanity in your research, please cite it using the metadata below."
+title: "Sanity: SAmpling-Noise-corrected Inference of Transcription ActivitY"
+abstract: "A Bayesian normalization procedure for single-cell RNA-seq data that corrects for sampling noise and measures expression in terms of fold changes without tunable parameters."
+type: software
+authors:
+  - family-names: Breda
+    given-names: Jérémie
+    orcid: 'https://orcid.org/0000-0002-8436-8771'
+  - family-names: Zavolan
+    given-names: Mihaela
+    orcid: 'https://orcid.org/0000-0002-8832-2041'
+  - family-names: van Nimwegen
+    given-names: Erik
+    orcid: 'https://orcid.org/0000-0001-6338-1312'
+repository-code: 'https://github.com/jmbreda/Sanity'
+url: 'https://github.com/jmbreda/Sanity'
+identifiers:
+  - description: "The primary peer-reviewed publication associated with this software"
+    type: doi
+    value: 10.1038/s41587-021-00875-x
+preferred-citation:
+  type: article
+  title: "Bayesian inference of gene expression states from single-cell RNA-seq data"
+  authors:
+    - family-names: Breda
+      given-names: Jérémie
+    - family-names: Zavolan
+      given-names: Mihaela
+    - family-names: van Nimwegen
+      given-names: Erik
+  journal: "Nature Biotechnology"
+  volume: 39
+  issue: 8
+  year: 2021
+  start: 1008
+  end: 1016
+  doi: "10.1038/s41587-021-00875-x"
+  url: "https://www.nature.com/articles/s41587-021-00875-x"

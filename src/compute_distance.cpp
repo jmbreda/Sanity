@@ -1,18 +1,15 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <iterator>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <cmath>
 #include <omp.h>
-#include <time.h>
+
+#include "Version.h"
 
 using namespace std;
-
-// Compile :
-// g++ -std=c++11 -O2 -ffast-math -O3 -fopenmp compute_distance.cpp -o Sanity_distance
 
 // Distances functions :
 // with error bars:
@@ -179,8 +176,14 @@ int main(int argc, char** argv){
 		out_file += "_euclidean";
 	if(s2n_cutoff > 0.0){
 		string s2n_str = to_string(s2n_cutoff);
-		while(s2n_str.back() == '0' || s2n_str.back()=='.')
-			s2n_str = s2n_str.substr(0, s2n_str.size()-1);
+		// Strip trailing zeros from the fractional part only, then the '.' itself.
+		// Stopping at the '.' is what keeps 10 -> "10" rather than "1".
+		if(s2n_str.find('.') != string::npos){
+			while(s2n_str.back() == '0')
+				s2n_str = s2n_str.substr(0, s2n_str.size()-1);
+			if(s2n_str.back() == '.')
+				s2n_str = s2n_str.substr(0, s2n_str.size()-1);
+		}
 		out_file += "_s2n_gt_" + s2n_str;
 	}
 	out_file += ".txt";
@@ -480,7 +483,7 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
     get_version[1] = "--version";
     for(i=1;i<argc;i++){
         if (argv[i] == get_version[0] || argv[i] == get_version[1]){
-            cout << "v1.0" << "\n";
+            cout << "Sanity_distance version " << SANITY_VERSION << "\n";
             exit(0);
         }
     }
@@ -509,9 +512,14 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
 				if(j==2) error_bar = argv[idx+1];
                 if(j==3) N_threads = atoi(argv[idx+1]);
 
-                // add '/' to out_folder if not already
-                if( j == 0 && sanity_folder.back() != '/' )
-                    sanity_folder = sanity_folder + '/';
+                // add '/' to out_folder if not already. `-f ""` gives an empty string, on
+                // which back() would be undefined behaviour, so treat it as the cwd.
+                if( j == 0 ){
+                    if( sanity_folder.empty() )
+                        sanity_folder = "./";
+                    else if( sanity_folder.back() != '/' )
+                        sanity_folder = sanity_folder + '/';
+                }
             }
         }
         if (idx == 0 && j == 0){

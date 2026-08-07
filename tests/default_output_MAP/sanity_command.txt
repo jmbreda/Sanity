@@ -1,0 +1,4 @@
+# Timestamp: 2026-08-06 22:32:07
+# Sanity version: 2.0
+# Method: MAP
+../bin/Sanity -f count_table.tsv -d default_output_MAP -v_m MAP -e 1

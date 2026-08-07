@@ -1,864 +1,1026 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <cctype>
 #include <string>
+#include <cstring>
+#include <iostream>
 #include <fstream>
+#include <vector>
 #include <omp.h>
 #include <ctime>
 #include <iomanip>
+#include <chrono>
+#include <sstream>
+#include <memory>
+#include <cerrno>
+#include <cstdlib>
+#include <sys/stat.h> // For mkdir on Unix-like systems
+#include <map>
+#include <cmath>
+#include <stdexcept>
 
-#include <sys/stat.h>  // For mkdir on Unix-like systems
 #ifdef _WIN32
-    #include <direct.h>  // For _mkdir on Windows
+    #include <direct.h> // For _mkdir on Windows
 #endif
 
-#include <ReadInputFiles.h>
-#include <FitFrac.h>
-#include <Digamma_Trigamma.h>
+#include "ReadInputFiles.h"
+#include "FitFrac.h"
+#include "Digamma_Trigamma.h"
+#include "Writer.hpp"
+#include "npy_writer.hpp"
+#include "Version.h"
 
-string VERSION("1.1");
+enum ParseResult
+{
+    CONTINUE,
+    VERSION_REQUESTED,
+    HELP_REQUESTED,
+    ERROR
+};
 
-using namespace std;
+struct RowComputation
+{
+    double mu;
+    double var_mu;
+    std::vector<double> delta;
+    std::vector<double> var_delta;
+    double var_gene;
+    std::vector<double> lik;
+};
 
 /***Function declarations ****/
-void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik, double &v_ml, double &mu_v_ml, double &var_mu_v_ml, double *delta_v_ml, double *var_delta_v_ml);
-double get_epsilon_2(double &d, double &v, double &n, double &f, double &a);
-void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_charm, bool &no_norm, bool &max_v_output, bool &post_v_output);
+RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method);
+double get_epsilon_2(double d, double v, double n, double f);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
 static void show_usage(void);
+std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
-int main (int argc, char** argv){
-	string in_file("");
-	string gene_name_file("none");
-	string cell_name_file("none");
-	string in_file_extension("");
-	string out_folder("");
-	int N_threads(4);
-	bool print_extended_output(false);
-	double vmin = 0.001;
+// Function to print a timestamped message to stderr
+void logging_debug(const std::string &msg)
+{
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+    std::tm buf;
+    #ifdef _WIN32
+        localtime_s(&buf, &in_time_t);
+    #else
+        localtime_r(&in_time_t, &buf);
+    #endif
+    std::cerr << "[" << std::put_time(&buf, "%Y-%m-%d %H:%M:%S");
+    std::cerr << ',' << std::setw(3) << std::setfill('0') << ms.count() << "] ";
+    std::cerr << msg << std::endl;
+}
+
+int main(int argc, char **argv)
+{
+    std::string in_file("");
+    std::string gene_name_file("none");
+    std::string cell_name_file("none");
+    std::string in_file_extension("");
+    std::string out_folder("./");
+    int N_threads(4);
+    bool print_extended_output(false);
+    double vmin = 0.001;
     double vmax = 50.0;
-	int numbin = 160;
-	int N_char;
-	bool no_norm(false);
-	bool max_v_output(false);
-	bool post_v_output(true);
-	parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, N_char, no_norm, max_v_output, post_v_output);
+    int numbin = 160;
+    bool no_norm(false);
+    int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
+    bool gzip_output = false;
+    bool npy_output = false;
+    std::string out_suffix = "";
 
-	// count Number of genes and cells
-	int G, C;
-	// Number of rows in file
-	int N_rows;
-	// Gene idx map for mtx
-	map<int,int> gene_idx;
-
-	if (in_file_extension == "mtx"){
-		Get_G_C_MTX(in_file, N_rows, G, C, gene_idx);
-		fprintf(stderr, "There were %d rows\n", N_rows);
-	} else {
-		Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, N_char);
-		fprintf(stderr, "There were %d rows\n", N_rows);
-	}
-	fprintf(stderr, "There were %d genes and %d cells\n",G,C);
-
-	int g, c, k;
-	// Count per cell
-	double *N_c = new double [C];
-    for(c=0;c<C;++c){
-        N_c[c] = 0;
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output);
+    if (parse_res == HELP_REQUESTED)
+    {
+        show_usage();
+        return 0;
     }
-	// Count per gene
-	double *n = new double [G];
-	// count per gene and per cell
-    double **n_c = new double *[G];
-    for(g=0;g<G;++g){
-        // n_c[g] = new double [C];
-		n_c[g] = new double[C]();
-		n[g] = 0;
-	}
-	// Gene and cell names
-	string *gene_names = new string [G];
-	string *cell_names = new string [C];
+    else if (parse_res == VERSION_REQUESTED)
+    {
+        std::cout << "Sanity version " << SANITY_VERSION << "\n";
+        return 0;
+    }
+    else if (parse_res == ERROR)
+    {
+        show_usage();
+        return 1;
+    }
+    // count Number of genes and cells
+    int G, C;
+    // Number of rows in file
+    int N_rows;
+    // Gene idx map for mtx
+    std::map<int, int> gene_idx;
+    std::vector<RowBlock> mtx_rows;
+    std::vector<std::streampos> tsv_offsets;
+    std::vector<double> N_c; // total counts per cell
+    std::vector<double> n;   // total counts per gene
+    std::vector<std::string> gene_names;
+    std::vector<std::string> cell_names;
+    logging_debug("Reading input file to get gene and cell counts");
+    if (in_file_extension == "mtx")
+    {
+        Get_G_C_MTX(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n);
+        gene_names = Read_GeneNames(gene_name_file, gene_idx, G);
+        if (static_cast<int>(gene_names.size()) == 0)
+        {
+            logging_debug("Warning: gene names file not found or empty, generating default gene names.");
+            gene_names.clear();
+            for (int g = 0; g < G; ++g)
+            {
+                gene_names.push_back("Gene_" + std::to_string(g + 1));
+            }
+        }
+        cell_names = Read_CellNames(cell_name_file);
+        if (static_cast<int>(cell_names.size()) == 0)
+        {
+            logging_debug("Warning: cell names file not found or empty, generating default cell names.");
+            for (int c = 0; c < C; ++c)
+            {
+                cell_names.push_back("Cell_" + std::to_string(c + 1));
+            }
+        }
+        logging_debug("There were " + std::to_string(N_rows) + " rows");
+    }
+    else
+    {
+        Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, tsv_offsets, N_c, n, cell_names, gene_names, N_threads);
+        logging_debug("There were " + std::to_string(N_rows) + " rows");
+    }
+    std::string genes_message = "The input contained " + std::to_string(N_rows) + " rows for " + std::to_string(C) +
+                                 " cells, and " + std::to_string(G) + " of these genes had at least one count in the dataset.";
+    if (N_rows != G)
+    {
+        genes_message += " " + std::to_string(N_rows - G) + " genes were thus removed because no counts were detected.";
+    }
+    logging_debug(genes_message);
 
-	// Read input file
-	if (in_file_extension == "mtx"){
-		ReadMTX(in_file, gene_name_file, cell_name_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, gene_idx);
-	} else {
-		ReadUMIcountMatrix(in_file, n_c, N_c, n, gene_names, cell_names, N_rows, G, C, N_char);
-	}
+    // Remove the total UMI correction if no cell size normalization option is true
+    if (no_norm)
+    {
+        logging_debug("No cell size normalization will be performed");
 
-	// Remove the total UMI correction if no cell size normalization option is true
-	if (no_norm){
-		cerr << "No cell size normalization will be performed\n";
+        // get mean count per cell
+        double mean_N_c = 0;
+        for (int c = 0; c < C; ++c)
+        {
+            mean_N_c += N_c[c];
+        }
+        mean_N_c /= C;
 
-		// get mean count per cell
-		double mean_N_c = 0;
-		for(c=0;c<C;++c){
-			mean_N_c += N_c[c];
-		}
-		mean_N_c /= C;
+        // Now replce N_c by N
+        for (int c = 0; c < C; ++c)
+        {
+            N_c[c] = mean_N_c;
+        }
+    }
 
-		// Now replce N_c by N
-		for(c=0;c<C;++c){
-			N_c[c] = mean_N_c;
-		}
-	}
+    // Grid of candidate gene variances, computed once here and shared with
+    // get_gene_expression_level rather than being recomputed there. Each value must stay exactly
+    // vmin * exp(deltav * k), with deltav formed exactly as below, to keep the output bit-identical.
+    double deltav = std::log(vmax / vmin) / ((double)numbin - 1);
+    std::vector<double> v_grid(numbin);
+    for (int kk = 0; kk < numbin; ++kk)
+        v_grid[kk] = vmin * std::exp(deltav * kk);
 
-	// alpha and beta of gamma prior on mu
-	double a;
-	double b;
-	a = 1.0;
-	b = 0.0;
+    // create output folder if it does not exist
+    int mkdir_result = 0;
+    #ifdef _WIN32
+        mkdir_result = _mkdir(out_folder.c_str());
+    #else
+        mkdir_result = mkdir(out_folder.c_str(), 0755);
+    #endif
 
-	// Estimage memory usage
-	double size_of_double = 8;
+    // Check for errors (ignore if directory already exists)
+    if (mkdir_result != 0 && errno != EEXIST)
+    {
+        if (errno == ENOENT)
+        {
+            // mkdir only creates the final component, so a missing parent is the likely cause.
+            logging_debug("Error: Failed to create output folder: " + out_folder +
+                          "\nIts parent directory must already exist; create it first.");
+        }
+        else
+        {
+            logging_debug("Error: Failed to create output folder: " + out_folder);
+        }
+        return 1;
+    }
 
-	// main double variables:
-	// G-array : n, mu, var_mu, var_gene
-	// C-array : N_c
-	// GxC array : n_c, delta, var_delta
-	// Gxnumbin array : lik
-	//
-	// parallel loop variables:
-	// C-array: f, sig2_delta_c, sig2_delta_num, sig2_delta_den2, Q
-	// numbin-array: mu_v
-	// Cxnumbin-array: delta_v, sig2_delta_v
-	//
-	//
-	double usage_bytes = 1.1*(4*G + C + 3*G*C + G*numbin + (5*C + numbin + 2*C*numbin)*N_threads  )*size_of_double;
-	if (max_v_output && post_v_output){
-		usage_bytes *= 4;
-	}
+    // save version and command with parameters to a file
+    std::ofstream cmd_file(out_folder + "sanity_command.txt", std::ios::trunc);
+    std::time_t now = std::time(NULL);
+    std::tm tm_snapshot;
+    #ifdef _WIN32
+        localtime_s(&tm_snapshot, &now);
+    #else
+        localtime_r(&now, &tm_snapshot);
+    #endif
 
-	cerr << std::setprecision(3);
-	cerr << "Estimated memory usage: ";
-	if ( usage_bytes > 1e9 ){
-		cerr << usage_bytes/1e9 << " GB\n";
-	}else if ( usage_bytes > 1e6 ){
-		cerr << usage_bytes/1e6 << " MB\n";
-	}else{
-		cerr << usage_bytes/1e3 << " KB\n";
-	}
-    // Declare output variables
-	double *mu = new double [G];
-	double *var_mu = new double [G];
-	double *var_gene = new double [G];
-	
-	double **delta = nullptr;
-	double **var_delta = nullptr;
-	if (post_v_output){
-		delta = new double *[G];
-		var_delta = new double *[G];
-		for( g=0; g<G; ++g){
-			delta[g] = new double [C];
-			var_delta[g] = new double [C];
-		}
-	}
-	double v;
-	double deltav = log(vmax/vmin)/((double) numbin-1);
-	double **lik = new double *[G];
-	for(g=0;g<G;g++){
-		lik[g] = new double [numbin];
-		for(k=0;k<numbin;k++)
-			lik[g][k] = -1.0;
-	}
+    char timestamp[20]; // "YYYY-MM-DD HH:MM:SS" + '\0' = 20
+    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm_snapshot);
+    cmd_file << "# Timestamp: " << timestamp << "\n";
 
-	// Declare output variables for when we want to store results for maximum likelihood estimate for v_g
-	double *var_gene_v_ml = nullptr;
-	double *mu_v_ml = nullptr;
-	double *var_mu_v_ml = nullptr;
-	double **delta_v_ml = nullptr;
-	double **var_delta_v_ml = nullptr;
-	if (max_v_output){
-		var_gene_v_ml = new double [G];
-		mu_v_ml = new double [G];
-		var_mu_v_ml = new double [G];
-		delta_v_ml = new double *[G];
-		var_delta_v_ml = new double *[G];
-		for( g=0; g<G; ++g){
-			delta_v_ml[g] = new double [C];
-			var_delta_v_ml[g] = new double [C];
-		}
-	}
+    cmd_file << "# Sanity version: " << SANITY_VERSION << "\n";
 
-	double* row_delta = nullptr;
-	double* row_var_delta = nullptr;
-	double* row_delta_v_ml = nullptr;
-	double* row_var_delta_v_ml = nullptr;
+    static const char* vm_name[] = {"MARG", "MLE", "MAP", "EAP"};
+    cmd_file << "# Method: " << vm_name[v_method] << "\n";
+    cmd_file  << argv[0];
+    for (int i = 1; i < argc; ++i)
+    {
+        cmd_file << " " << argv[i];
+    }
+    cmd_file << "\n";
+    cmd_file.close();
 
-	// Estimate running time:
-	int N_est = 10;
-	if ( N_est < G ){
-		// start timer
-		clock_t begin = clock();
+    // -- Open files for writing --
+    std::unique_ptr<npy::NpyStreamWriter> out_delta_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_ddelta_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_mu_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_var_gene_npy;
 
-		// run on N_est genes
-		for(g=0;g<N_est;++g){
-			if (post_v_output){
-				row_delta = delta[g];
-				row_var_delta = var_delta[g];
-			}
-			if (max_v_output){
-				row_delta_v_ml = delta_v_ml[g];
-				row_var_delta_v_ml = var_delta_v_ml[g];
-			}
-			get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],row_delta,row_var_delta,C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], row_delta_v_ml, row_var_delta_v_ml);
-		}
+    sanity::Writer out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene,
+        out_delta, out_ddelta, out_lik, out_gene, out_cell;
 
-		// stop timer
-		clock_t end = clock();
-		double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-		double estimated_running_time = elapsed_secs/N_est*(G-N_est)/N_threads;
+    if (npy_output) {
+        out_delta_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy"));
+        out_ddelta_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy"));
+        out_mu_npy.reset(new npy::NpyStreamWriter(out_folder + "mu.npy", 1));
+        out_var_gene_npy.reset(new npy::NpyStreamWriter(out_folder + "variance.npy", 1));
 
-		// output esimated running time
-		cerr << "Estimated running time: ";
-		if ( estimated_running_time > 86400 ){
-			cerr << estimated_running_time/(3600*24) << " days ";
-		}else if ( estimated_running_time > 3600 ){
-			cerr << estimated_running_time/3600 << " hours ";
-		}else if ( estimated_running_time > 60 ){
-			cerr << estimated_running_time/60 << " minutes ";
-		}else{
-			cerr << estimated_running_time << " seconds ";
-		}
-		cerr << "(Excluding reading/writing operations.)\n";
-        }else{
-		N_est = 0;
-	}
-	cerr << std::setprecision(6);
-	cout << std::setprecision(6);
+        out_gene.open(out_folder + "geneID.txt");
+        // save gene names
+        for (int g = 0; g < G; g++)
+        {
+            out_gene << gene_names[g].c_str() << "\n";
+        }
+        out_cell.open(out_folder + "cellID.txt");
+        // save cell names
+        for (int c = 0; c < C; c++)
+        {
+            out_cell << cell_names[c].c_str() << "\n";
+        }
+    }
+    else {
+        if (gzip_output) {out_suffix = ".gz";}
 
-   	// Get Loglikelihood :
-	cerr << "Fit gene expression levels\n";
-	int g_print(G/(N_threads*40));
-    #pragma omp parallel for num_threads(N_threads)
-	for(g=N_est;g<G;++g){
-		if (g == g_print){
-			fprintf(stderr, "First process now fitting gene %d out of %d.\n", g, (int) G/N_threads);
-			g_print *= 2;
-		}
+        out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
+        out_exp_lev << std::fixed << std::setprecision(6);
 
-		if (post_v_output){
-			row_delta = delta[g];
-			row_var_delta = var_delta[g];
-		}
-		if (max_v_output){
-			row_delta_v_ml = delta_v_ml[g];
-			row_var_delta_v_ml = var_delta_v_ml[g];
-		}
-		get_gene_expression_level(n_c[g],N_c,n[g],vmin,vmax,mu[g],var_mu[g],row_delta,row_var_delta,C,numbin,a,b,lik[g], var_gene_v_ml[g], mu_v_ml[g], var_mu_v_ml[g], row_delta_v_ml, row_var_delta_v_ml);
-	}
+        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
+        out_d_exp_lev << std::fixed << std::setprecision(6);
 
-	// Create subfolder if results need to be stored that take the maximum posterior value for v_g
-	// string out_subfolder = "";
-	// if (max_v_output){
-	// 	out_subfolder = out_folder + "/using_max_posterior_v_g/";
-	// 	#ifdef _WIN32
-	// 		_mkdir(out_subfolder.c_str());  // Use _mkdir on Windows
-	// 	#else
-	// 		mkdir(out_subfolder.c_str(), 0777);  // Use mkdir on Unix-like systems with full permissions
-	// 	#endif
-	// }
+        out_exp_lev << "GeneID";
+        out_d_exp_lev << "GeneID";
+        for (int c = 0; c < C; c++)
+        {
+            out_exp_lev << "\t" << cell_names[c].c_str();
+            out_d_exp_lev << "\t" << cell_names[c].c_str();
+        }
+        out_exp_lev << "\n";
+        out_d_exp_lev << "\n";
+        if (print_extended_output)
+        {
 
-	// Write output files
+            out_gene.open(out_folder + "geneID.txt" + out_suffix);
+            out_cell.open(out_folder + "cellID.txt" + out_suffix);
+            out_mu.open(out_folder + "mu.txt" + out_suffix);
+            out_mu << std::fixed << std::setprecision(6);
 
-	cerr << "Print output\n";
-	// Write log expression table and error bars table
-	if (post_v_output){
-		ofstream out_exp_lev, out_d_exp_lev, out_exp_lev_v_ml, out_d_exp_lev_v_ml;
-		out_exp_lev.open(out_folder + "log_transcription_quotients.txt",ios::out);
-		out_d_exp_lev.open(out_folder + "ltq_error_bars.txt",ios::out);
+            out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
+            out_dmu << std::fixed << std::setprecision(6);
 
-		out_exp_lev << "GeneID";
-		out_d_exp_lev << "GeneID";
-		for(c=0;c<C;c++){
-			out_exp_lev << "\t" << cell_names[c].c_str();
-			out_d_exp_lev << "\t" << cell_names[c].c_str();
-		}
-		out_exp_lev << "\n";
-		out_d_exp_lev << "\n";
+            out_var_gene.open(out_folder + "variance.txt" + out_suffix);
+            out_var_gene << std::fixed << std::setprecision(6);
 
-		for(g=0;g<G;g++){
-		out_exp_lev << gene_names[g].c_str();
-		out_d_exp_lev << gene_names[g].c_str();
-			for(c=0;c<C;c++){
-				out_exp_lev << "\t" << mu[g] + delta[g][c];
-				out_d_exp_lev << "\t" << sqrt( var_mu[g] + var_delta[g][c] );
-			}
-			if ( g != G-1 ){
-				out_exp_lev << "\n";
-				out_d_exp_lev << "\n";
-			}
-		}
-		out_exp_lev.close();
-		out_d_exp_lev.close();
+            out_delta.open(out_folder + "delta.txt" + out_suffix);
+            out_delta << std::fixed << std::setprecision(6);
 
-		if ( print_extended_output ){
+            out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
+            out_ddelta << std::fixed << std::setprecision(6);
 
-			// Compute variance : \int v*p(v) dv
-			for(g=0; g<G; ++g){
-				var_gene[g] = 0.0;
-				for(k=0;k<numbin;++k){
-					v = vmin * exp(deltav*k);
-					var_gene[g] += v*lik[g][k];
-				}
-			}
+            out_lik.open(out_folder + "likelihood.txt" + out_suffix);
+            out_lik << std::fixed << std::setprecision(6);
 
-			cerr << "Print extended output\n";
-			string my_file;
-			FILE *out_gene, *out_cell, *out_mu, *out_dmu, *out_var_gene, *out_delta, *out_ddelta;
-			// output files
-			my_file = out_folder + "geneID.txt";
-			out_gene = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_gene == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+            out_lik << "Variance";
+            for (int k = 0; k < (numbin); ++k)
+            {
+                out_lik << "\t" << v_grid[k];
+            }
+            out_lik << "\n";
 
-			my_file = out_folder + "cellID.txt";
-			out_cell = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_cell == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+            // save cell names
+            for (int c = 0; c < C; c++)
+            {
+                out_cell << cell_names[c].c_str() << "\n";
+            }
+        }
+    }
 
-			my_file = out_folder + "mu.txt";
-			out_mu = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_mu == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+    logging_debug("Fit gene expression levels");
+    const std::clock_t begin = std::clock();
+    #pragma omp parallel num_threads(N_threads)
+    {
+        FileReader thread_reader(in_file);
+        #pragma omp for schedule(dynamic) ordered
+        for (int g = 0; g < G; ++g)
+        {
+            std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
+            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+            // The `ordered` clause is what makes the writes below safe: it serialises this block
+            // across threads and runs it in ascending g, so the output rows stay in gene order and
+            // the shared output streams are never written concurrently.
+            #pragma omp ordered
+            {
+                // output esimated running time
+                if (g == (3 * N_threads - 1))
+                {
+                    std::clock_t end = std::clock();
+                    double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+                    double estimated_running_time = (elapsed_secs / (3. * N_threads)) * G / N_threads;
 
-			my_file = out_folder + "d_mu.txt";
-			out_dmu = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_dmu == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+                    std::string estimated_running_time_str = "Estimated running time: ";
+                    if (estimated_running_time > 86400)
+                    {
+                        std::stringstream stream;
+                        stream << std::fixed << std::setprecision(2) << estimated_running_time / (3600. * 24.);
+                        estimated_running_time_str += stream.str() + " days ";
+                    }
+                    else if (estimated_running_time > 3600)
+                    {
+                        std::stringstream stream;
+                        stream << std::fixed << std::setprecision(2) << estimated_running_time / 3600.;
+                        estimated_running_time_str += stream.str() + " hours ";
+                    }
+                    else if (estimated_running_time > 60)
+                    {
+                        std::stringstream stream;
+                        stream << std::fixed << std::setprecision(2) << estimated_running_time / 60.;
+                        estimated_running_time_str += stream.str() + " minutes ";
+                    }
+                    else
+                    {
+                        std::stringstream stream;
+                        stream << std::fixed << std::setprecision(2) << estimated_running_time;
+                        estimated_running_time_str += stream.str() + " seconds ";
+                    }
+                    logging_debug(estimated_running_time_str);
+                }
 
-			my_file = out_folder + "variance.txt";
-			out_var_gene = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_var_gene == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+                if (g % 1000 == 0 && g > 0)
+                {
+                    logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(G));
+                }
 
-			my_file = out_folder + "delta.txt";
-			out_delta = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_delta == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+                // write output
+                if (npy_output) {
+                    out_delta_npy->write_row(result.delta);
+                    // transform var_delta to standard deviation before writing to file
+                    for (double &v : result.var_delta) {
+                        v = std::sqrt(v);
+                    }
+                    out_ddelta_npy->write_row(result.var_delta);
+                    out_mu_npy->write_row(&result.mu, 1);
+                    out_var_gene_npy->write_row(&result.var_gene, 1);
+                }
+                else {
+                    out_exp_lev << gene_names[g];
+                    out_d_exp_lev << gene_names[g];
+                    for (int c = 0; c < C; c++)
+                    {
+                        out_exp_lev << "\t" << result.mu + result.delta[c];
+                        out_d_exp_lev << "\t" << std::sqrt(result.var_mu + result.var_delta[c]);
+                        if (print_extended_output)
+                        {
+                            out_delta << result.delta[c];
+                            out_ddelta << std::sqrt(result.var_delta[c]);
+                            if (c < C - 1)
+                            {
+                                out_delta << "\t";
+                                out_ddelta << "\t";
+                            }
+                        }
+                    }
+                    out_exp_lev << "\n";
+                    out_d_exp_lev << "\n";
 
-			my_file = out_folder + "d_delta.txt";
-			out_ddelta = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_ddelta == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
+                    if (print_extended_output)
+                    {
+                        out_delta << "\n";
+                        out_ddelta << "\n";
+                        // Write gene names
+                        out_gene << gene_names[g].c_str() << "\n";
+                        // print best fit to file : mu, delta
+                        //  Print diagonal of invM : variance of mu, delta
+                        out_mu << result.mu << "\n";
+                        out_dmu << std::sqrt(result.var_mu) << "\n";
+                        out_var_gene << result.var_gene << "\n";
+                        // Write likelihood
+                        out_lik << gene_names[g];
+                        for (int k = 0; k < numbin; ++k)
+                        {
+                            out_lik << "\t" << result.lik[k];
+                        }
+                        out_lik << "\n";
+                    }
+                }
+            }
+        }
+    }
 
-			// output cell name
-			for(c=0;c<C;c++){
-				fprintf(out_cell,"%s\n",cell_names[c].c_str());
-			}
-			for(g=0; g<G; ++g){
-				// Write gene names
-				fprintf(out_gene,"%s\n",gene_names[g].c_str());
-
-				//print best fit to file : mu, delta
-				// Print diagonal of invM : variance of mu, delta
-				fprintf(out_mu,"%lf\n",mu[g]);
-				fprintf(out_dmu,"%lf\n",sqrt(var_mu[g]));
-				fprintf(out_var_gene,"%lf\n",var_gene[g]);
-				for(c=0;c<C-1;++c){
-					fprintf(out_delta,"%lf\t",delta[g][c]);
-					fprintf(out_ddelta,"%lf\t",sqrt(var_delta[g][c]));
-				}
-				fprintf(out_delta,"%lf\n",delta[g][C-1]);
-				fprintf(out_ddelta,"%lf\n",sqrt(var_delta[g][C-1]));
-			}
-			fclose(out_gene);
-			fclose(out_cell);
-			fclose(out_mu);
-			fclose(out_dmu);
-			fclose(out_var_gene);
-			fclose(out_delta);
-			fclose(out_ddelta);
-
-			// Write likelihood
-			ofstream out_lik;
-			out_lik.open(out_folder + "likelihood.txt",ios::out);
-			// write v values of bins in loglikelihood
-			out_lik << "Variance\t";
-			for(k=0;k<(numbin-1);++k){
-				v = vmin*exp(deltav*k);
-				out_lik << v << "\t";
-			}
-			v = vmin*exp(deltav*(numbin-1));
-			out_lik << v << "\n";
-			for(g=0; g<G; ++g){
-				out_lik << gene_names[g] << "\t";
-				for(k=0;k<numbin;++k){
-					if(k<numbin-1){
-						out_lik << lik[g][k] << "\t";
-					}else{
-						out_lik << lik[g][k] << "\n";
-					}
-				}
-			}
-			out_lik.close();
-		}
-	}
-	
-	// Repeat very similar output code for when you want to output the results for max posterior v_g
-	if (max_v_output){
-		ofstream out_exp_lev_v_ml, out_d_exp_lev_v_ml;
-		out_exp_lev_v_ml.open(out_folder + "log_transcription_quotients_vmax.txt",ios::out);
-		out_d_exp_lev_v_ml.open(out_folder + "ltq_error_bars_vmax.txt",ios::out);
-
-		out_exp_lev_v_ml << "GeneID";
-		out_d_exp_lev_v_ml << "GeneID";
-		for(c=0;c<C;c++){
-			out_exp_lev_v_ml << "\t" << cell_names[c].c_str();
-			out_d_exp_lev_v_ml << "\t" << cell_names[c].c_str();
-		}
-		out_exp_lev_v_ml << "\n";
-		out_d_exp_lev_v_ml << "\n";
-
-		for(g=0;g<G;g++){
-		out_exp_lev_v_ml << gene_names[g].c_str();
-		out_d_exp_lev_v_ml << gene_names[g].c_str();
-			for(c=0;c<C;c++){
-				out_exp_lev_v_ml << "\t" << mu_v_ml[g] + delta_v_ml[g][c];
-				out_d_exp_lev_v_ml << "\t" << sqrt( var_mu_v_ml[g] + var_delta_v_ml[g][c] );
-			}
-			if ( g != G-1 ){
-				out_exp_lev_v_ml << "\n";
-				out_d_exp_lev_v_ml << "\n";
-			}
-		}
-		out_exp_lev_v_ml.close();
-		out_d_exp_lev_v_ml.close();
-
-		if ( print_extended_output ){
-			cerr << "Print extended output\n";
-			string my_file;
-			FILE *out_gene, *out_cell;
-			FILE *out_mu_v_ml, *out_dmu_v_ml, *out_var_gene_v_ml, *out_delta_v_ml, *out_ddelta_v_ml;
-			if(!post_v_output){
-				my_file = out_folder + "geneID.txt";
-				out_gene = (FILE *) fopen(my_file.c_str(),"w");
-				if(out_gene == NULL){
-					fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-					exit(EXIT_FAILURE);
-				}
-
-				my_file = out_folder + "cellID.txt";
-				out_cell = (FILE *) fopen(my_file.c_str(),"w");
-				if(out_cell == NULL){
-					fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-					exit(EXIT_FAILURE);
-				}
-			}
-			my_file = out_folder + "mu_vmax.txt";
-			out_mu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_mu_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "d_mu_vmax.txt";
-			out_dmu_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_dmu_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "variance_vmax.txt";
-			out_var_gene_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_var_gene_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "delta_vmax.txt";
-			out_delta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_delta_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-			my_file = out_folder + "d_delta_vmax.txt";
-			out_ddelta_v_ml = (FILE *) fopen(my_file.c_str(),"w");
-			if(out_ddelta_v_ml == NULL){
-				fprintf(stderr,"Cannot open output file %s\n",my_file.c_str());
-				exit(EXIT_FAILURE);
-			}
-
-
-			for(c=0;c<C;c++){
-				fprintf(out_cell,"%s\n",cell_names[c].c_str());
-			}
-			for(g=0; g<G; ++g){
-				// Write gene names
-				fprintf(out_gene,"%s\n",gene_names[g].c_str());
-				//print best fit to file : mu, delta
-				// Print diagonal of invM : variance of mu, delta
-				fprintf(out_mu_v_ml,"%lf\n",mu_v_ml[g]);
-				fprintf(out_dmu_v_ml,"%lf\n",sqrt(var_mu_v_ml[g]));
-				fprintf(out_var_gene_v_ml,"%lf\n",var_gene_v_ml[g]);
-				for(c=0;c<C-1;++c){
-					fprintf(out_delta_v_ml,"%lf\t",delta_v_ml[g][c]);
-					fprintf(out_ddelta_v_ml,"%lf\t",sqrt(var_delta_v_ml[g][c]));
-				}
-				fprintf(out_delta_v_ml,"%lf\n",delta_v_ml[g][C-1]);
-				fprintf(out_ddelta_v_ml,"%lf\n", sqrt(var_delta_v_ml[g][C-1]));
-			}
-			fclose(out_mu_v_ml);
-			fclose(out_dmu_v_ml);
-			fclose(out_var_gene_v_ml);
-			fclose(out_delta_v_ml);
-			fclose(out_ddelta_v_ml);
-		}
-	}
+    logging_debug("Finished fitting all genes");
 
     return 0;
 }
 
-void get_gene_expression_level(double *n_c, double *N_c, double n, double vmin, double vmax, double &mu, double &var_mu, double *delta, double *var_delta, int C, int numbin, double a, double b, double *lik, double &var_gene_v_ml, double &mu_v_ml, double &var_mu_v_ml, double *delta_v_ml, double *var_delta_v_ml){
-	int i, k;
-    double beta,L,ldet,q,delsq,inv_v;
-	double *f = new double[C];
-	double **delta_v = new double *[numbin];
+RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c,
+                                         double n, const std::vector<double> &v_grid, int C, int numbin,
+                                         int v_method)
+{
+    // n = total counts for the gene
+    // n_c = counts for the gene in each cell
+    // N_c = total counts for each cell
+    // C = number of cells
+    // numbin = number of bins for v
+    int i, k;
+    double beta, L, ldet, q, delsq, inv_v;
+    double prev_q = 0.0;
+    double *f = new double[C];
+    double **delta_v = new double *[numbin];
     double **sig2_delta_v = new double *[numbin];
-	for(k=0;k<numbin;++k){
-        delta_v[k] = new double [C];
-        sig2_delta_v[k] = new double [C];
+    std::vector<double> lik(numbin, -1.0);
+    std::vector<double> delta(C, 0.0), var_delta(C, 0.0);
+    double var_mu, var_gene;
+
+    for (k = 0; k < numbin; ++k)
+    {
+        delta_v[k] = new double[C];
+        sig2_delta_v[k] = new double[C];
     }
 
-	/*** To compute var of delta ***/
-    double *sig2_delta_c = new double [C];
-    double *sig2_delta_num = new double [C];
-    double *sig2_delta_den2 = new double [C];
+    /*** To compute var of delta ***/
+    double *sig2_delta_c = new double[C];
+    double *sig2_delta_num = new double[C];
+    double *sig2_delta_den2 = new double[C];
     double sig2_delta_den1;
 
-	double *mu_v = new double[numbin];
-	double Lmax = -1e+100;
-	int Lmax_ind = 0;
+    double *mu_v = new double[numbin];
+    double Lmax = -1e+100;
+    int Lmax_ind = 0;
     double v;
-	double deltav;
-    deltav = log(vmax/vmin)/((double) numbin-1);
 
-	for(k=0;k<numbin;++k){
-		v = vmin * exp(deltav*k);
-		beta = 1.0/((n+a)*v);
-		//#pragma omp critical
-		q = fitfrac(f,n_c,n,v,C,N_c,a,b);
+    for (k = 0; k < numbin; ++k)
+    {
+        v = v_grid[k];
+        beta = 1.0 / (n * v);
+        q = fitfrac(f, n_c, n, v, C, N_c, prev_q);
+        prev_q = q;
+        mu_v[k] = Psi_0(n) - q; /*** equation (85) ***/
 
-		mu_v[k] = Psi_0(n+a)-q; /*** equation (85) ***/
+        delsq = 0;
+        L = -0.5 * ((double)C) * std::log(v); // (56) 1st term
+        for (i = 0; i < C; ++i)
+        {
+            delta_v[k][i] = std::log(f[i]) - std::log(N_c[i]) + q; // equation (67)
+            L += n_c[i] * delta_v[k][i];                 // data term sum_c n_c*delta_c, as in Equation 19 of Sanity paper SI
+            delsq += delta_v[k][i] * delta_v[k][i];
+        }
+        L -= delsq / (2 * v); // (56) 2nd term
+        L -= n * q;     // 4th term in equation (56)
 
-		double tot = 0;
-		for(i=0;i<C;++i){
-			tot += f[i];
-		}
-		delsq = 0;
-		L = -0.5*((double) C)*log(v); // (56) 1st term
-		for(i=0;i<C;++i){
-			delta_v[k][i] = log(f[i]) - log(N_c[i]) + q; // equation (67)
-			L += n_c[i]*delta_v[k][i];// Bug fix: remove a term as in Equation 19 of Sanity paper SI
-			delsq += delta_v[k][i]*delta_v[k][i];
-		}
-		L -= delsq/(2*v);// (56) 2nd term
-		L -= (n+a)*q;//4th term in equation (56)
+        // get the determinant of the matrix
+        ldet = 0.0;
+        for (i = 0; i < C; ++i)
+        {
+            ldet += (f[i] * f[i]) / (f[i] + beta);
+        }
 
-		// get the determinant of the matrix
-		ldet = 0.0;
-		for(i=0;i<C;++i){
-			ldet += (f[i]*f[i])/(f[i]+beta);
-		}
+        ldet = std::log(1 - ldet);
+        for (i = 0; i < C; ++i)
+        {
+            ldet += std::log(f[i] + beta);
+        }
+        L -= 0.5 * ldet;
+        lik[k] = L;
 
-		ldet = log(1 - ldet);
-		for(i=0;i<C;++i){
-			ldet += log(f[i]+beta);
-		}
-		L -= 0.5*ldet;
-		// substract prior with a = 1, b = 1 ( log(v^a*exp(-b*v)) = alog(v) - bv
-		lik[k] = L;
-		
-		if(L > Lmax){
-			Lmax = L;
-			Lmax_ind = k;
-		}
+        if (L > Lmax)
+        {
+            Lmax = L;
+            Lmax_ind = k;
+        }
 
-		/* compute nf^2/(nf+1/sigma^2) for each c */
-		inv_v = 1.0/v;
-		for(i=0;i<C;++i){
-			sig2_delta_c[i] = (n+a)*f[i]*f[i]/((n+a)*f[i] + inv_v);
-		}
-		/* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
-		sig2_delta_den1 = 1.0;
-		for(i=0;i<C;++i){
-			sig2_delta_den1 -= sig2_delta_c[i];
-			sig2_delta_den2[i] = (n+a)*f[i] + inv_v;
-		}
-		/* compute the different terms in the numerator : remove the \tilde{c} terms */
-		for(i=0;i<C;i++){
-			sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
-		}
-		/* compute sig2_delta */
-		for(i=0;i<C;++i){
-			sig2_delta_v[k][i] = sig2_delta_num[i]/(sig2_delta_den1*sig2_delta_den2[i]);
-		}
+        /* compute nf^2/(nf+1/sigma^2) for each c */
+        inv_v = 1.0 / v;
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_c[i] = n * f[i] * f[i] / (n * f[i] + inv_v);
+        }
+        /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
+        sig2_delta_den1 = 1.0;
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_den1 -= sig2_delta_c[i];
+            sig2_delta_den2[i] = n * f[i] + inv_v;
+        }
+        /* compute the different terms in the numerator : remove the \tilde{c} terms */
+        for (i = 0; i < C; i++)
+        {
+            sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
+        }
+        /* compute sig2_delta */
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_v[k][i] = sig2_delta_num[i] / (sig2_delta_den1 * sig2_delta_den2[i]);
+        }
 
         // fix computation of asymmetric sig2_delta for zero count
-        for(i=0;i<C;++i){
-            if(n_c[i]<=0.5){
-                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i],v,n,f[i],a);
+        for (i = 0; i < C; ++i)
+        {
+            if (n_c[i] <= 0.5)
+            {
+                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i], v, n, f[i]);
             }
         }
-	}// end v bins loop
+    } // end v bins loop
 
-	// get normalized likelihood from loglikelihood
-	double sum_L;
-	sum_L = 0.0;
-	for(k=0;k<numbin;k++){
-		lik[k] -= Lmax;
-		lik[k] = exp(lik[k]);
-		sum_L += lik[k];
-	}
-	for(k=0;k<numbin;k++){
-		lik[k] /= sum_L;
-	}
+    // get normalized likelihood from loglikelihood
+    double sum_L;
+    sum_L = 0.0;
+    for (k = 0; k < numbin; k++)
+    {
+        lik[k] -= Lmax;
+        lik[k] = std::exp(lik[k]);
+        sum_L += lik[k];
+    }
+    for (k = 0; k < numbin; k++)
+    {
+        lik[k] /= sum_L;
+    }
 
-	/*
-	// Multiply by prior
-	for(k=0;k<numbin;k++){
-		v = vmin * exp(deltav*k);
-		lik[k] *= v*exp(-v);
-	}
-	// Renormalize
-	sum_L = 0;
-	for(k=0;k<numbin;k++){
-		sum_L += lik[k];
-	}
-	for(k=0;k<numbin;k++){
-		lik[k] /= sum_L;
-	}
-	*/
+    int vindex = 0;
+    if(v_method ==1){
+        vindex = Lmax_ind;
+    }
+    else if(v_method == 2){
+        // Dividing the normalised likelihood by v applies an implicit 1/v (Jeffreys) prior on the
+        // gene variance. This is the only prior in effect anywhere in this computation.
+        double mapmax = -1e+100;
+        for (k = 0; k < numbin; k++)    {
+            double curv = v_grid[k];
 
-	// Average delta, and mu
-	mu = 0.0;
-	for(k=0;k<numbin;k++){
-		mu += lik[k]*mu_v[k];
-	}
+            if (lik[k]/curv > mapmax)
+            {
+                mapmax = lik[k]/curv;
+                vindex = k;
+            }
+        }
+    }
+    else if(v_method == 3){
+        double postmean = 0.0;
+        for (k = 0; k < numbin; k++)    {
+            double curv = v_grid[k];
+            postmean += lik[k] * curv;
+        }
+        double mindist = 1e+100;
+        for (k = 0; k < numbin; k++)    {
+            double curv = v_grid[k];
+            if (std::fabs(curv - postmean) < mindist)
+            {
+                mindist = std::fabs(curv - postmean);
+                vindex = k;
+            }
+        }
+    }
 
-	// Compute var_delta = < (mu - <mu>)^2 > + <d_mu>
-	var_mu = Psi_1((double) n + 1);
-	for(k=0;k<numbin;k++){
-		var_mu += lik[k]*(mu_v[k] - mu)*(mu_v[k] - mu);
-	}
+    // Average delta, and mu
+    double mu = 0.0;
+    for (k = 0; k < numbin; k++)
+    {
+        mu += lik[k] * mu_v[k];
+    }
 
-	if (delta != nullptr){
-		// Compute <delta> = int p(v)*delta(v) dv
-		for(i=0;i<C;i++){
-			delta[i] = 0.0;
-			for(k=0;k<numbin;k++){
-				delta[i] += lik[k]*delta_v[k][i];
-			}
-		}
-		// Compute var_delta = < (delta - <delta>)^2 > + <sig2_delta^2>
-		for(i=0;i<C;i++){
-			var_delta[i] = 0.0;
-			for(k=0;k<numbin;k++){
-				var_delta[i] += lik[k]*(delta_v[k][i]-delta[i])*(delta_v[k][i]-delta[i]) + lik[k]*sig2_delta_v[k][i];
-			}
-		}
-	}
+    // Compute var_delta = < (mu - <mu>)^2 > + <d_mu>
+    var_mu = Psi_1((double)n);
+    for (k = 0; k < numbin; k++)
+    {
+        var_mu += lik[k] * (mu_v[k] - mu) * (mu_v[k] - mu);
+    }
 
-	if (delta_v_ml != nullptr){
-		// Store the gene-variance that maximizes the likelihood:
-		var_gene_v_ml = vmin * exp(deltav*Lmax_ind);
-		// And then also the corresponding values for the LTQs etc.
-		mu_v_ml = mu_v[Lmax_ind];
-		var_mu_v_ml = Psi_1((double) n + 1);
-		for(i=0;i<C;i++){
-			delta_v_ml[i] = delta_v[Lmax_ind][i];
-		}
-		for(i=0;i<C;i++){
-			var_delta_v_ml[i] = sig2_delta_v[Lmax_ind][i];
-		}
-	}
+    if (v_method == 0)  // MARG
+    {
+        // Compute <delta> = int p(v)*delta(v) dv
+        for (i = 0; i < C; i++)
+        {
+            delta[i] = 0.0;
+            for (k = 0; k < numbin; k++)
+            {
+                delta[i] += lik[k] * delta_v[k][i];
+            }
+        }
+        // Compute var_delta = < (delta - <delta>)^2 > + <sig2_delta^2>
+        for (i = 0; i < C; i++)
+        {
+            var_delta[i] = 0.0;
+            for (k = 0; k < numbin; k++)
+            {
+                var_delta[i] += lik[k] * (delta_v[k][i] - delta[i]) * (delta_v[k][i] - delta[i]) + lik[k] * sig2_delta_v[k][i];
+            }
+        }
+        // var_gene
+        var_gene = 0.0;
+        for (k = 0; k < numbin; ++k)
+        {
+            v = v_grid[k];
+            var_gene += v * lik[k];
+        }
+    }
 
-	delete[] f;
-	for(k=0;k<numbin;++k){
+    if (v_method > 0)
+    {
+        // Store the gene-variance that maximizes the likelihood:
+        var_gene = v_grid[vindex];
+        // And then also the corresponding values for the LTQs etc.
+        mu = mu_v[vindex];
+        var_mu = Psi_1((double)n);
+        for (i = 0; i < C; i++)
+        {
+            delta[i] = delta_v[vindex][i];
+        }
+        for (i = 0; i < C; i++)
+        {
+            var_delta[i] = sig2_delta_v[vindex][i];
+        }
+    }
+
+    delete[] f;
+    for (k = 0; k < numbin; ++k)
+    {
         delete[] delta_v[k];
         delete[] sig2_delta_v[k];
     }
-	delete[] delta_v;
-	delete[] sig2_delta_v;
-	delete[] sig2_delta_c;
+    delete[] delta_v;
+    delete[] sig2_delta_v;
+    delete[] sig2_delta_c;
     delete[] sig2_delta_num;
     delete[] sig2_delta_den2;
-	delete[] mu_v;
-	return;
+    delete[] mu_v;
+
+    RowComputation result;
+    result.mu = mu;
+    result.var_mu = var_mu;
+    result.delta = delta;
+    result.var_delta = var_delta;
+    result.var_gene = var_gene;
+    result.lik = lik;
+    
+    return result;
 }
 
-double get_epsilon_2(double &d, double &v, double &n, double &f, double &a){
+double get_epsilon_2(double d, double v, double n, double f)
+{
 
     double e;
     double dL;
     double e_low = 0.0;
     double e_high = 0.0;
-    double vnf = v*(n+a)*f;
-    e_high = ( -(d+vnf) + sqrt( (d+vnf)*(d+vnf) + v*(1.0 + vnf) ) )/(1.0 + vnf);
+    double vnf = v * n * f;
+    e_high = (-(d + vnf) + std::sqrt((d + vnf) * (d + vnf) + v * (1.0 + vnf))) / (1.0 + vnf);
 
     // bisection method :
     double tol = 0.0000001;
     double diff = 1.0;
-    while(diff > tol){
-        e = (e_high+e_low)/2.0;
-        dL = e*(2.0*d+e)/(2.0*v) + (n+a)*f*(exp(e)-1.0);
-        if(dL < 0.5){
+    while (diff > tol)
+    {
+        e = (e_high + e_low) / 2.0;
+        dL = e * (2.0 * d + e) / (2.0 * v) + n * f * (std::exp(e) - 1.0);
+        if (dL < 0.5)
+        {
             e_low = e;
-        }else{
+        }
+        else
+        {
             e_high = e;
         }
-        diff = fabs(dL-0.5);
+        diff = std::fabs(dL - 0.5);
     }
-    return e*e;
+    return e * e;
 }
 
-void parse_argv(int argc,char** argv, string &in_file, string &gene_name_file, string &cell_name_file, string &in_file_extension, string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, int &N_char, bool &no_norm, bool &max_v_output, bool &post_v_output){
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output)
+{
 
-    if (argc<2)
-        show_usage();
-
+    // Running with no arguments at all is a usage error, not a help request: main prints the usage
+    // for both, but ERROR exits 1 whereas an explicit -h/--help still exits 0.
+    if (argc < 2)
+    {
+        logging_debug("Error in argument parsing :\n"
+                      "Not enough arguments provided.\n");
+        return ERROR;
+    }
     int i;
 
-    string get_help [2];
+    std::string get_help[2];
     get_help[0] = "-h";
     get_help[1] = "--help";
 
-    for(i=1;i<argc;i++){
+    for (i = 1; i < argc; i++)
+    {
         if (argv[i] == get_help[0] || argv[i] == get_help[1])
-            show_usage();
+            return HELP_REQUESTED;
     }
-	string get_version [2];
-	get_version[0] = "-v";
+    std::string get_version[2];
+    get_version[0] = "-v";
     get_version[1] = "--version";
-	for(i=1;i<argc;i++){
-		if (argv[i] == get_version[0] || argv[i] == get_version[1]){
-			cout << VERSION << "\n";
-			exit(0);
-		}
-	}
+    for (i = 1; i < argc; i++)
+    {
+        if (argv[i] == get_version[0] || argv[i] == get_version[1])
+        {
+            return VERSION_REQUESTED;
+        }
+    }
 
-	int N_param(11);
-	string extended_output("false");
-	string no_norm_str("false");
-	string max_v_str("false");
-    string to_find[11][2] = {{"-f", "--file"},
-							{"-d", "--destination"},
-							{"-n", "--n_threads"},
-							{"-e", "--extended_output"},
-         					{"-vmin", "--variance_min"},
-         					{"-vmax", "--variance_max"},
-					    	{"-nbin", "--number_of_variance_bins"},
-							{"-mtx_genes","--mtx_gene_name_file"},
-							{"-mtx_cells","--mtx_cell_name_file"},
-							{"-no_norm","--no_cell_size_normalization"},
-							{"-max_v","--get_output_for_maxlik_variance"}};
+    std::string extended_output("false");
+    std::string no_norm_str("false");
+    std::string v_method_str("MAP");
+    std::string to_find[][2] = {{"-f", "--file"},
+                             {"-d", "--destination"},
+                             {"-n", "--n_threads"},
+                             {"-e", "--extended_output"},
+                             {"-vmin", "--variance_min"},
+                             {"-vmax", "--variance_max"},
+                             {"-nbin", "--number_of_variance_bins"},
+                             {"-mtx_genes", "--mtx_gene_name_file"},
+                             {"-mtx_cells", "--mtx_cell_name_file"},
+                             {"-no_norm", "--no_cell_size_normalization"},
+                             {"-v_m", "--v_method"},
+                             {"-gz", "--gzip_output"},
+                             {"-npy", "--npy_output"}};
+    // Derived from the table itself so the count cannot drift from the array.
+    const int N_param = sizeof(to_find) / sizeof(to_find[0]);
+
+    // Returns the to_find index matched by `arg`, or -1 if `arg` is not a known option. Both the
+    // matching loop below and the validation pass after it go through this, so the set of accepted
+    // spellings cannot drift between them.
+    auto match_option = [&](const std::string &arg) -> int
+    {
+        for (int t = 0; t < N_param; t++)
+        {
+            // The two development-only flags also keep their original spellings working.
+            const bool legacy_spelling =
+                (t == 11 && (arg == "--gz" || arg == "--gzip-output")) ||
+                (t == 12 && (arg == "--npy" || arg == "--npy-output"));
+            if (arg == to_find[t][0] || arg == to_find[t][1] || legacy_spelling)
+                return t;
+        }
+        return -1;
+    };
+    // Only the two flags at indices 11 and 12 take no argument; every other known option takes
+    // exactly one. -h/--help and -v/--version are handled earlier and never reach here.
+    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12; };
 
     int j;
     int idx;
-    for(j=0;j<N_param;j++){
+    for (j = 0; j < N_param; j++)
+    {
         idx = 0;
-        for(i=1;i<argc;i++){
-            if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1]){
-				idx = i;
-                if ( idx+1 > argc-1 ){
-                    cerr << "Error in argument parsing :\n"
-                         << argv[i] << " option missing\n";
-                    show_usage();
+        for (i = 1; i < argc; i++)
+        {
+            if (match_option(argv[i]) == j)
+            {
+                // Both flags are experimental and deliberately undocumented: they appear neither
+                // in README.md nor in show_usage(). Neither takes an argument.
+                //   -npy silently overrides -e and -gz (see the block at the end of this function)
+                //   and writes a different SET of outputs, not merely a different format:
+                //   delta.npy, d_delta.npy, mu.npy, variance.npy plus geneID.txt and cellID.txt,
+                //   and NOT log_transcription_quotients, ltq_error_bars, likelihood or d_mu.
+                //   d_delta.npy holds standard deviations, not variances.
+                //   -gz output cannot be read back by Sanity_distance or Sanity_gene_correlation,
+                //   which open delta.txt with a plain fopen and have no zlib path.
+                if (j == 11)
+                {
+                    gzip_output = true;
+                    continue; // no argument expected for -gz
                 }
-				if(j==0) in_file = argv[idx+1];
-				if(j==1) out_folder = argv[idx+1];
-				if(j==2) N_threads = atoi(argv[idx+1]);
-				if(j==3) extended_output = argv[idx+1];
-				if(j==4) vmin = atof(argv[idx+1]);
-				if(j==5) vmax = atof(argv[idx+1]);
-				if(j==6) numbin = atoi(argv[idx+1]);
-				if(j==7) gene_name_file = argv[idx+1];
-				if(j==8) cell_name_file = argv[idx+1];
-				if(j==9) no_norm_str = argv[idx+1];
-				if(j==10) max_v_str = argv[idx+1];
-				// add '/' to out_folder if not already
-				if( j == 1 && out_folder.back() != '/' )
-					out_folder = out_folder + '/';
+                if (j == 12)
+                {
+                    npy_output = true;
+                    continue; // no argument expected for -npy
+                }
+                idx = i;
+                if (idx + 1 > argc - 1)
+                {
+                    logging_debug("Error in argument parsing :\n" + std::string(argv[i]) + " option missing\n");
+                    return ERROR;
+                }
+                if (j == 0)
+                    in_file = argv[idx + 1];
+                if (j == 1)
+                    out_folder = argv[idx + 1];
+                if (j == 2)
+                    N_threads = std::atoi(argv[idx + 1]);
+                if (j == 3)
+                    extended_output = argv[idx + 1];
+                if (j == 4)
+                    vmin = std::atof(argv[idx + 1]);
+                if (j == 5)
+                    vmax = std::atof(argv[idx + 1]);
+                if (j == 6)
+                    numbin = std::atoi(argv[idx + 1]);
+                if (j == 7)
+                    gene_name_file = argv[idx + 1];
+                if (j == 8)
+                    cell_name_file = argv[idx + 1];
+                if (j == 9)
+                    no_norm_str = argv[idx + 1];
+                if (j == 10)
+                    v_method_str = argv[idx + 1];
+                // add '/' to out_folder if not already. `-d ""` gives an empty string, on which
+                // back() would be undefined behaviour, so treat it as the current directory.
+                if (j == 1)
+                {
+                    if (out_folder.empty())
+                        out_folder = "./";
+                    else if (out_folder.back() != '/')
+                        out_folder = out_folder + '/';
+                }
             }
         }
-		if (idx == 0 && j == 0){
-        	cerr << "Error in argument parsing :\n"
-            << "missing input file name\n";
-			show_usage();
+        if (idx == 0 && j == 0)
+        {
+            logging_debug("Error in argument parsing :\n"
+                          "missing input file name\n");
+            return ERROR;
         }
     }
 
-	if ( extended_output == "true" || extended_output == "1" )
-		print_extended_output = true;
-
-	if ( no_norm_str == "true" || no_norm_str == "1" )
-		no_norm = true;
-	
-	if ( max_v_str == "true" || max_v_str == "1" || max_v_str == "only_max_output"){
-		max_v_output = true;
-		post_v_output = false;
-		}
-	// else if (max_v_str == "only_max_output"){
-	// 	max_v_output = true;
-	// 	post_v_output = false;
-	// 	}
-
-
-	// Get input file extension
-	in_file_extension = in_file.substr(in_file.find(".")+1,in_file.length());
-	cerr << "File type : " << in_file_extension << "\n";
-
-	// Get number of Character in first row, for iobuffer
-	string command = "head -1 " + in_file + "|wc -c>" + out_folder + "tmp";
-	int out = system(command.c_str());
-    ifstream myfile (out_folder + "tmp");
-    string line;
-    if (myfile.is_open()){
-        getline (myfile,line);
-        myfile.close();
-		N_char = atoi(line.c_str());
-		command = "rm " + out_folder + "tmp";
-		out = system(command.c_str());
+    // Reject anything on the command line that was not consumed above, either as a known option
+    // or as the value of one. Without this, a typo such as "-e1" or "--bogus 7" is silently
+    // ignored and the run quietly produces something other than what was asked for.
+    std::vector<bool> consumed(argc, false);
+    for (i = 1; i < argc; i++)
+    {
+        const int option_index = match_option(argv[i]);
+        if (option_index < 0)
+            continue;
+        consumed[i] = true;
+        if (!takes_no_argument(option_index) && i + 1 < argc)
+        {
+            // Consume the next token as this option's value, whatever it looks like: a value may
+            // legitimately begin with '-', and no option here takes a negative number anyway.
+            consumed[i + 1] = true;
+            i++;
+        }
     }
-    else{
-		cerr << "Unable to open " + out_folder + "tmp\n";
-		N_char = 10000000;
-	}
-	N_char = 2*N_char;
+    for (i = 1; i < argc; i++)
+    {
+        if (!consumed[i])
+        {
+            logging_debug("Error in argument parsing :\nunrecognised option '" + std::string(argv[i]) + "'\n");
+            return ERROR;
+        }
+    }
+
+    if (extended_output == "true" || extended_output == "1")
+        print_extended_output = true;
+
+    if (no_norm_str == "true" || no_norm_str == "1")
+        no_norm = true;
+
+    if(v_method_str == "MLE" || v_method_str == "mle" || v_method_str == "MaxLikelihood" || v_method_str == "maxlikelihood" || v_method_str == "max_likelihood"){
+        v_method = 1;
+        logging_debug("Outputting results for the prior variance (v_g) that maximizes the likelihood (MLE).");
+    }
+    else if(v_method_str == "MAP" || v_method_str == "map" || v_method_str == "MaxAPosterior" || v_method_str == "maxaposterior" || v_method_str == "max_a_posterior"){
+        v_method = 2;
+        logging_debug("Outputting results for the prior variance (v_g) that maximizes the posterior (MAP).");
+    }
+    else if(v_method_str == "EAP" || v_method_str == "eap" || v_method_str == "ExpectedAPosterior" || v_method_str == "expectedaposterior" || v_method_str == "expected_a_posterior"){
+        v_method = 3;
+        logging_debug("Outputting results for the expected value of the prior variance (v_g) over the posterior (EAP).");
+    }
+    else if(v_method_str == "MARG" || v_method_str == "marg" || v_method_str == "marginalizing"){
+        v_method = 0;
+        logging_debug("Outputting results for the prior variance (v_g) marginalizing over v.");
+    }
+    else {
+        logging_debug("Invalid method specified for variance estimation.");
+        return ERROR;
+    }
+
+    // -npy silently overrides both -e and -gz rather than rejecting the combination: the npy path
+    // writes its own fixed set of files (delta/d_delta/mu/variance .npy plus geneID.txt and
+    // cellID.txt), so there is no extended output to print and no text stream to compress.
+    // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
+    if(npy_output){
+        gzip_output = false;
+        print_extended_output = false;
+    }
+
+    // Get input file extension
+    in_file_extension = (in_file.size() >= 3) ? in_file.substr(in_file.size() - 3) : in_file;
+
+    // Check for .mtx.gz or .tsv.gz extensions
+    if (in_file.size() >= 7)
+    {
+        std::string last_7 = in_file.substr(in_file.size() - 7);
+        if (last_7 == ".mtx.gz")
+        {
+            in_file_extension = "mtx";
+        }
+        else if (last_7 == ".tsv.gz")
+        {
+            in_file_extension = "tsv";
+        }
+    }
+
+    // Handle uncompressed extensions
+    if (in_file_extension != "mtx" && in_file_extension != "tsv")
+    {
+        for (char &ch : in_file_extension)
+        {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        if (in_file_extension != "mtx" && in_file_extension != "tsv")
+        {
+            in_file_extension = "tsv"; // default to tsv
+        }
+    }
+
+    logging_debug("File type : " + in_file_extension + "\n");
+    return CONTINUE;
 }
 
 static void show_usage(void)
 {
-    cerr << "Usage: Sanity <option(s)> SOURCES\n"
-         << "Options:\n"
-         << "\t-h,--help\t\tShow this help message\n"
-         << "\t-v,--version\t\tShow the current version\n"
-         << "\t-f,--file\t\tSpecify the input transcript count text file (.mtx for Matrix Market File Format)\n"
-		 << "\t-mtx_genes,--mtx_gene_name_file\tSpecify the gene name text file (only needed if .mtx input file)\n"
-		 << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
-         << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
-         << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
-         << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
-         << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
-         << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
-         << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
-		 << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
-		 << "\t-max_v,--get_output_for_maxlik_variance\tOption to get the results for the prior variance (v_g) that maximizes the likelihood, \n\t"
-		 <<	"\ti.e., without integrating over the posterior for v_g. (default: false, choice: false,0,true,1)\n";
-	exit(0);
+    std::cerr << "Usage: Sanity <option(s)> SOURCES\n"
+              << "Options:\n"
+              << "\t-h,--help\t\tShow this help message\n"
+              << "\t-v,--version\t\tShow the current version\n"
+              << "\t-f,--file\t\tSpecify the input transcript count text file (.mtx for Matrix Market File Format)\n"
+              << "\t-mtx_genes,--mtx_gene_name_file\tSpecify the gene name text file (only needed if .mtx input file)\n"
+              << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
+              << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
+              << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
+              << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
+              << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
+              << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
+              << "\t-nbin,--number_of_variance_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
+              << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
+              << "\t-v_m,--v_method\t\tOption to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)\n";
+}
+
+std::vector<double> fetch_row(int g, FileReader &thread_reader, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C)
+{
+    std::vector<double> row_data(C, 0.0);
+    if (!thread_reader.is_open())
+    {
+        throw std::runtime_error("RowReader: cannot open input file.");
+    }
+
+    if (in_file_extension == "mtx")
+    {
+        // Fetch from Matrix Market format
+        const RowBlock &row_block = mtx_rows[g];
+        thread_reader.seekg(row_block.offset);
+        char *line = nullptr;
+        char *saveptr = nullptr;
+        char *token = nullptr;
+        for (size_t idx = 0; idx < row_block.nnz; ++idx)
+        {
+            line = thread_reader.getline();
+            token = strtok_r(line, " \t\r\n", &saveptr);
+            int g_idx = std::stoi(token) - 1; // Convert to 0-based index
+            // Guard against a stale offset silently reading another gene's counts. Compare against
+            // the row index recorded when the offset table was built, not g: g is the position in
+            // mtx_rows, which skips zero-count genes and so need not equal the mtx row index.
+            if (g_idx != row_block.row_index)
+            {
+                throw std::runtime_error("RowReader: expected gene index " + std::to_string(row_block.row_index + 1) +
+                                         " but found " + std::to_string(g_idx + 1) +
+                                         ". The input file is likely malformed or its offset table is stale.");
+            }
+            token = strtok_r(NULL, " \t\r\n", &saveptr);
+            int c_idx = std::stoi(token) - 1; // Convert to 0-based index
+            token = strtok_r(NULL, " \t\r\n", &saveptr);
+            double value = std::stod(token);
+            row_data[c_idx] = value;
+        }
+    }
+    else
+    {
+        // Fetch from TSV format
+        thread_reader.seekg(tsv_offsets[g]);
+        char *line = nullptr;
+        char *saveptr = nullptr;
+        char *token = nullptr;
+        line = thread_reader.getline();
+        token = strtok_r(line, "\t\r\n", &saveptr); // skip gene name
+        for (int c = 0; c < C; ++c)
+        {
+            token = strtok_r(NULL, "\t\r\n", &saveptr);
+            row_data[c] = std::stod(token);
+        }
+    }
+
+    return row_data;
 }
