@@ -1,187 +1,131 @@
 # Contributing to Sanity
 
-First off, thank you for considering contributing to Sanity! It's 
-people like you that make Sanity such a great tool.
-
-## Table of Contents
-
-- [Code of Conduct](#code-of-conduct)
-- [How Can I Contribute?](#how-can-i-contribute)
-- [Development Setup](#development-setup)
-- [Pull Request Process](#pull-request-process)
-- [Style Guide](#style-guide)
-- [Community](#community)
+Thank you for considering contributing to Sanity!
 
 ## Code of Conduct
 
-This project and everyone participating in it is governed by our 
-[Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are 
-expected to uphold this code.
+This project and everyone participating in it is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
 
-## How Can I Contribute?
+## How can I contribute?
 
-### 🐛 Reporting Bugs
+### Reporting bugs
 
-Before creating bug reports, please check existing issues to avoid 
-duplicates. When you create a bug report, include as many details as 
-possible.
+Please check the existing issues first to avoid duplicates. A useful bug report includes:
 
-**Great bug reports include:**
 - A clear, descriptive title
-- Steps to reproduce the behavior
-- Expected behavior vs actual behavior
-- Screenshots (if applicable)
-- Environment details (OS, browser, version)
+- The exact command line you ran, and the input it ran on
+- What you expected to happen, and what happened instead
+- Environment details: operating system, compiler version, and the output of `./bin/Sanity -v`
 
-### 💡 Suggesting Features
+### Suggesting features
 
-Feature requests are welcome!
+Feature requests are welcome. It helps to describe the problem you are trying to solve, not only
+the solution you have in mind, along with any alternatives you considered.
 
-**Great feature requests include:**
-- Clear problem statement: "I'm frustrated when..."
-- Proposed solution
-- Alternative solutions you've considered
-- Additional context
+### Improving documentation
 
-### 📝 Improving Documentation
+Documentation improvements are always welcome: fixing typos, adding examples, or clarifying
+sections that were confusing when you first read them.
 
-Documentation improvements are always welcome! This includes:
-- Fixing typos
-- Adding examples
-- Clarifying confusing sections
-- Translating documentation
+### Submitting code
 
-### 🔧 Submitting Code
+Look for issues labelled `good first issue` or `help wanted` for places to start.
 
-Look for issues labeled `good first issue` or `help wanted` for 
-great places to start.
-
-## Development Setup
+## Development setup
 
 ### Prerequisites
 
-- C++ compiler with C++11 support
-- make
+- A C++ compiler with **C++17** support (the Makefile builds with `-std=c++17`, and the code uses
+  `<filesystem>` and structured bindings, so this is a hard requirement)
+- `make`
 - Git
-- libomp
+- OpenMP
 - zlib
+- Python 3 with `numpy` (`pip3 install numpy`), to run `tests/compare.py`
 
-### Getting Started
+For how to install the OpenMP and zlib dependencies on Linux and macOS, follow the
+[Installation section of the README](README.md#installation) rather than duplicating the steps
+here — note in particular that on macOS Apple's `clang++` does not support OpenMP, so a real GCC
+is required.
+
+### Getting started
 
 ```bash
-# 1. Fork the repository on GitHub
-
-# 2. Clone your fork locally
-git clone https://github.com/breda/Sanity.git
+# 1. Fork the repository on GitHub, then clone your fork
+git clone https://github.com/<your-username>/Sanity.git
 cd Sanity
 
-# 3. Add upstream remote
+# 2. Add the upstream remote
 git remote add upstream https://github.com/jmbreda/Sanity.git
 
-# 4. Create a branch for your changes
+# 3. Create a branch for your changes
 git checkout -b feature/your-feature-name
 
-# 5. Code your changes
- ...
-
-# Compile the project
+# 4. Make your changes, then compile
 cd src
 make clean
 make
 
-# 7. Run tests to verify your changes
-cd tests
-python compare.py
+# 5. Run the tests
+cd ../tests
+python3 compare.py
 ```
 
-## Pull Request Process
+## Pull request process
 
-### Before Submitting
+1. Update your branch with the latest upstream changes:
 
-1. **Update your branch** with the latest upstream changes:
    ```bash
    git fetch upstream
-   git rebase upstream/main
+   git rebase upstream/master
    ```
 
-2. **Run provided simple tests** and ensure all tests pass:
+2. Rebuild and re-run the tests, and confirm they still pass:
+
    ```bash
-    cd tests
-    python compare.py
+   cd src && make clean && make
+   cd ../tests && python3 compare.py
    ```
 
-3. **Update documentation** if you've changed APIs or added features.
+3. Update the documentation if you changed the command-line options or added a feature.
 
-### Submitting
+4. Push your branch to your fork and open a pull request against the `master` branch. There is no
+   pull request template; a clear description of what changed and why is enough.
 
-1. Push your branch to your fork:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+### Checklist
 
-2. Open a Pull Request against the `main` branch.
-
-3. Fill out the PR template completely.
-
-4. Wait for review.
-
-### PR Checklist
-
-- [ ] My code follows the project's style guidelines
 - [ ] I have performed a self-review of my own code
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
+- [ ] My changes generate no new compiler warnings
+- [ ] `python3 compare.py` passes for all four methods
 
-## Style Guide
+## Style guide
 
-### Commit Messages
+### Commit messages
 
-We follow [Conventional Commits](https://conventionalcommits.org/):
+Please write clear, descriptive commit messages: a short summary line saying what changed, and a
+body explaining why when the reason is not obvious. Sanity does not follow a formal commit message
+convention.
 
-```
-(): 
+### Code style
 
-[optional body]
-
-[optional footer]
-```
-
-**Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation only
-- `style`: Formatting, missing semicolons, etc.
-- `refactor`: Code change that neither fixes a bug nor adds a feature
-- `test`: Adding missing tests
-- `chore`: Maintenance tasks
-
-**Examples:**
-```
-feat(auth): add OAuth2 support
-fix(api): handle null response from payment provider
-docs(readme): update installation instructions
-```
-
-### Code Style
-
-- While currently Sanity is not following any standard code style, we encourage contributors to follow a consistent style within their own contributions. 
+Sanity does not currently follow a single standard code style. Please match the style of the file
+you are editing, and keep formatting changes out of commits that also change behaviour — mixing
+the two makes a change very hard to review.
 
 ### Testing
 
-- Currentlty, Sanity does not have a comprehensive test suite but rather a simple test script to verify that results are matching the correct ones. However, we encourage contributors to add tests for new features and bug fixes.
+Sanity does not have a comprehensive test suite. `tests/compare.py` checks the output of a run
+against checked-in reference outputs for all four `-v_m` methods; see [tests/README.md](tests/README.md).
+Any change that is meant to be behaviour-preserving should leave those outputs identical. If you
+add a feature or fix a bug, adding a test is very welcome.
 
 ## Community
 
-- [Discussions](https://github.com/breda/Sanity/discussions) - Ask questions
-
-## Recognition
-
-Contributors are added to our [CONTRIBUTORS.md](CONTRIBUTORS.md) file 
-and mentioned in release notes for significant contributions.
+- [Discussions](https://github.com/jmbreda/Sanity/discussions) — ask questions
 
 ---
 
-Thank you for contributing! 🎉
+Thank you for contributing!

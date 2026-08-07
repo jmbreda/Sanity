@@ -60,6 +60,9 @@ Sanity_gene_correlation:  compute_gene_correlations.o
 compute_gene_correlations.o: compute_gene_correlations.cpp Version.h
 	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
 
+.PHONY: clean
+
 clean:
 	rm -f *.o
+	rm -f ../bin/Sanity ../bin/Sanity_distance ../bin/Sanity_gene_correlation
 
