@@ -26,8 +26,8 @@
 #include "Digamma_Trigamma.h"
 #include "Writer.hpp"
 #include "npy_writer.hpp"
+#include "Version.h"
 
-std::string VERSION("2.0");
 enum ParseResult
 {
     CONTINUE,
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     }
     else if (parse_res == VERSION_REQUESTED)
     {
-        std::cout << "Sanity version " << VERSION << "\n";
+        std::cout << "Sanity version " << SANITY_VERSION << "\n";
         return 0;
     }
     else if (parse_res == ERROR)
@@ -221,7 +221,7 @@ int main(int argc, char **argv)
     std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm_snapshot);
     cmd_file << "# Timestamp: " << timestamp << "\n";
 
-    cmd_file << "# Sanity version: " << VERSION << "\n";
+    cmd_file << "# Sanity version: " << SANITY_VERSION << "\n";
 
     static const char* vm_name[] = {"MARG", "MLE", "MAP", "EAP"};
     cmd_file << "# Method: " << vm_name[v_method] << "\n";

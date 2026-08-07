@@ -9,6 +9,8 @@
 #include <omp.h>
 #include <time.h>
 
+#include "Version.h"
+
 using namespace std;
 
 // Compile :
@@ -528,7 +530,7 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
       {
         if (argv[i] == get_version[0] || argv[i] == get_version[1])
 	  {
-            cout << "v1.0" << "\n";
+            cout << "Sanity_gene_correlation version " << SANITY_VERSION << "\n";
             exit(0);
 	  }
       }

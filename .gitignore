@@ -11,3 +11,4 @@ tests/compare.log
 /bin
 /local_files
 *.o
+/results

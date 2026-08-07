@@ -7,6 +7,8 @@
 #include <cmath>
 #include <omp.h>
 
+#include "Version.h"
+
 using namespace std;
 
 // Distances functions :
@@ -481,7 +483,7 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
     get_version[1] = "--version";
     for(i=1;i<argc;i++){
         if (argv[i] == get_version[0] || argv[i] == get_version[1]){
-            cout << "v1.0" << "\n";
+            cout << "Sanity_distance version " << SANITY_VERSION << "\n";
             exit(0);
         }
     }

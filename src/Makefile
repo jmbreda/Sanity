@@ -30,7 +30,7 @@ LDFLAGS= -lz
 Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o $(LDFLAGS)
 
-calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp npy_writer.hpp
+calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp npy_writer.hpp Version.h
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
 
 npy_writer.o: npy_writer.cpp npy_writer.hpp
@@ -51,13 +51,13 @@ Digamma_Trigamma.o: Digamma_Trigamma.cpp Digamma_Trigamma.h
 Sanity_distance: compute_distance.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity_distance compute_distance.o
 
-compute_distance.o: compute_distance.cpp
+compute_distance.o: compute_distance.cpp Version.h
 	$(CC) $(CFLAGS) -c compute_distance.cpp
 
 Sanity_gene_correlation:  compute_gene_correlations.o
 	$(CC) $(CFLAGS) -o ../bin/Sanity_gene_correlation compute_gene_correlations.o
 
-compute_gene_correlations.o: compute_gene_correlations.cpp
+compute_gene_correlations.o: compute_gene_correlations.cpp Version.h
 	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
 
 clean:
