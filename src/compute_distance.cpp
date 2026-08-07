@@ -510,9 +510,14 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
 				if(j==2) error_bar = argv[idx+1];
                 if(j==3) N_threads = atoi(argv[idx+1]);
 
-                // add '/' to out_folder if not already
-                if( j == 0 && sanity_folder.back() != '/' )
-                    sanity_folder = sanity_folder + '/';
+                // add '/' to out_folder if not already. `-f ""` gives an empty string, on
+                // which back() would be undefined behaviour, so treat it as the cwd.
+                if( j == 0 ){
+                    if( sanity_folder.empty() )
+                        sanity_folder = "./";
+                    else if( sanity_folder.back() != '/' )
+                        sanity_folder = sanity_folder + '/';
+                }
             }
         }
         if (idx == 0 && j == 0){

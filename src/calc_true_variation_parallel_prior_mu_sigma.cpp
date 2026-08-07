@@ -180,20 +180,26 @@ int main(int argc, char **argv)
     double deltav = std::log(vmax / vmin) / ((double)numbin - 1);
 
     // create output folder if it does not exist
-    if (out_folder == "/") {
-        out_folder = "./";
-    }
     int mkdir_result = 0;
     #ifdef _WIN32
         mkdir_result = _mkdir(out_folder.c_str());
     #else
         mkdir_result = mkdir(out_folder.c_str(), 0755);
     #endif
-    
+
     // Check for errors (ignore if directory already exists)
     if (mkdir_result != 0 && errno != EEXIST)
     {
-        logging_debug("Error: Failed to create output folder: " + out_folder);
+        if (errno == ENOENT)
+        {
+            // mkdir only creates the final component, so a missing parent is the likely cause.
+            logging_debug("Error: Failed to create output folder: " + out_folder +
+                          "\nIts parent directory must already exist; create it first.");
+        }
+        else
+        {
+            logging_debug("Error: Failed to create output folder: " + out_folder);
+        }
         return 1;
     }
 
@@ -698,11 +704,13 @@ double get_epsilon_2(double &d, double &v, double &n, double &f)
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output)
 {
 
+    // Running with no arguments at all is a usage error, not a help request: main prints the usage
+    // for both, but ERROR exits 1 whereas an explicit -h/--help still exits 0.
     if (argc < 2)
     {
         logging_debug("Error in argument parsing :\n"
                       "Not enough arguments provided.\n");
-        return HELP_REQUESTED;
+        return ERROR;
     }
     int i;
 
@@ -726,11 +734,10 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         }
     }
 
-    int N_param(13);
     std::string extended_output("false");
     std::string no_norm_str("false");
     std::string v_method_str("MAP");
-    std::string to_find[13][2] = {{"-f", "--file"},
+    std::string to_find[][2] = {{"-f", "--file"},
                              {"-d", "--destination"},
                              {"-n", "--n_threads"},
                              {"-e", "--extended_output"},
@@ -743,6 +750,28 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-v_m", "--v_method"},
                              {"-gz", "--gzip_output"},
                              {"-npy", "--npy_output"}};
+    // Derived from the table itself so the count cannot drift from the array.
+    const int N_param = sizeof(to_find) / sizeof(to_find[0]);
+
+    // Returns the to_find index matched by `arg`, or -1 if `arg` is not a known option. Both the
+    // matching loop below and the validation pass after it go through this, so the set of accepted
+    // spellings cannot drift between them.
+    auto match_option = [&](const std::string &arg) -> int
+    {
+        for (int t = 0; t < N_param; t++)
+        {
+            // The two development-only flags also keep their original spellings working.
+            const bool legacy_spelling =
+                (t == 11 && (arg == "--gz" || arg == "--gzip-output")) ||
+                (t == 12 && (arg == "--npy" || arg == "--npy-output"));
+            if (arg == to_find[t][0] || arg == to_find[t][1] || legacy_spelling)
+                return t;
+        }
+        return -1;
+    };
+    // Only the two flags at indices 11 and 12 take no argument; every other known option takes
+    // exactly one. -h/--help and -v/--version are handled earlier and never reach here.
+    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12; };
 
     int j;
     int idx;
@@ -751,15 +780,7 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         idx = 0;
         for (i = 1; i < argc; i++)
         {
-            // The j == 11 / j == 12 entries are the development-only output flags (see below).
-            // Their original spellings ("--gz"/"--gzip-output" and "--npy"/"--npy-output") stay
-            // accepted so that existing scripts keep working; they are matched here rather than as
-            // extra to_find rows because the table is indexed by position.
-            const std::string arg_i(argv[i]);
-            const bool legacy_spelling =
-                (j == 11 && (arg_i == "--gz" || arg_i == "--gzip-output")) ||
-                (j == 12 && (arg_i == "--npy" || arg_i == "--npy-output"));
-            if (arg_i == to_find[j][0] || arg_i == to_find[j][1] || legacy_spelling)
+            if (match_option(argv[i]) == j)
             {
                 // Both flags are experimental and deliberately undocumented: they appear neither
                 // in README.md nor in show_usage(). Neither takes an argument.
@@ -808,15 +829,48 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                     no_norm_str = argv[idx + 1];
                 if (j == 10)
                     v_method_str = argv[idx + 1];
-                // add '/' to out_folder if not already
-                if (j == 1 && out_folder.back() != '/')
-                    out_folder = out_folder + '/';
+                // add '/' to out_folder if not already. `-d ""` gives an empty string, on which
+                // back() would be undefined behaviour, so treat it as the current directory.
+                if (j == 1)
+                {
+                    if (out_folder.empty())
+                        out_folder = "./";
+                    else if (out_folder.back() != '/')
+                        out_folder = out_folder + '/';
+                }
             }
         }
         if (idx == 0 && j == 0)
         {
             logging_debug("Error in argument parsing :\n"
                           "missing input file name\n");
+            return ERROR;
+        }
+    }
+
+    // Reject anything on the command line that was not consumed above, either as a known option
+    // or as the value of one. Without this, a typo such as "-e1" or "--bogus 7" is silently
+    // ignored and the run quietly produces something other than what was asked for.
+    std::vector<bool> consumed(argc, false);
+    for (i = 1; i < argc; i++)
+    {
+        const int option_index = match_option(argv[i]);
+        if (option_index < 0)
+            continue;
+        consumed[i] = true;
+        if (!takes_no_argument(option_index) && i + 1 < argc)
+        {
+            // Consume the next token as this option's value, whatever it looks like: a value may
+            // legitimately begin with '-', and no option here takes a negative number anyway.
+            consumed[i + 1] = true;
+            i++;
+        }
+    }
+    for (i = 1; i < argc; i++)
+    {
+        if (!consumed[i])
+        {
+            logging_debug("Error in argument parsing :\nunrecognised option '" + std::string(argv[i]) + "'\n");
             return ERROR;
         }
     }
