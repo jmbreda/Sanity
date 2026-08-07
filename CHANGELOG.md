@@ -1,4 +1,4 @@
-## [2.0] - 2026-07-29
+## [2.0.0] - 2026-07-29
 ### Added
 - New methods for calculating v_g (`-v_m` option):
     - MAP (**default**) maximum a posteriori estimate of v_g
