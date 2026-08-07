@@ -155,8 +155,6 @@ int main(int argc, char **argv)
     }
     logging_debug(genes_message);
 
-    int g, c, k;
-
     // Remove the total UMI correction if no cell size normalization option is true
     if (no_norm)
     {
@@ -164,14 +162,14 @@ int main(int argc, char **argv)
 
         // get mean count per cell
         double mean_N_c = 0;
-        for (c = 0; c < C; ++c)
+        for (int c = 0; c < C; ++c)
         {
             mean_N_c += N_c[c];
         }
         mean_N_c /= C;
 
         // Now replce N_c by N
-        for (c = 0; c < C; ++c)
+        for (int c = 0; c < C; ++c)
         {
             N_c[c] = mean_N_c;
         }
@@ -252,13 +250,13 @@ int main(int argc, char **argv)
 
         out_gene.open(out_folder + "geneID.txt");
         // save gene names
-        for (g = 0; g < G; g++)
+        for (int g = 0; g < G; g++)
         {
             out_gene << gene_names[g].c_str() << "\n";
         }
         out_cell.open(out_folder + "cellID.txt");
         // save cell names
-        for (c = 0; c < C; c++)
+        for (int c = 0; c < C; c++)
         {
             out_cell << cell_names[c].c_str() << "\n";
         }
@@ -274,7 +272,7 @@ int main(int argc, char **argv)
 
         out_exp_lev << "GeneID";
         out_d_exp_lev << "GeneID";
-        for (c = 0; c < C; c++)
+        for (int c = 0; c < C; c++)
         {
             out_exp_lev << "\t" << cell_names[c].c_str();
             out_d_exp_lev << "\t" << cell_names[c].c_str();
@@ -305,14 +303,14 @@ int main(int argc, char **argv)
             out_lik << std::fixed << std::setprecision(6);
 
             out_lik << "Variance";
-            for (k = 0; k < (numbin); ++k)
+            for (int k = 0; k < (numbin); ++k)
             {
                 out_lik << "\t" << v_grid[k];
             }
             out_lik << "\n";
 
             // save cell names
-            for (c = 0; c < C; c++)
+            for (int c = 0; c < C; c++)
             {
                 out_cell << cell_names[c].c_str() << "\n";
             }
@@ -329,6 +327,9 @@ int main(int argc, char **argv)
         {
             std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
             RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+            // The `ordered` clause is what makes the writes below safe: it serialises this block
+            // across threads and runs it in ascending g, so the output rows stay in gene order and
+            // the shared output streams are never written concurrently.
             #pragma omp ordered
             {
                 // output esimated running time
@@ -385,7 +386,7 @@ int main(int argc, char **argv)
                 else {
                     out_exp_lev << gene_names[g];
                     out_d_exp_lev << gene_names[g];
-                    for (c = 0; c < C; c++)
+                    for (int c = 0; c < C; c++)
                     {
                         out_exp_lev << "\t" << result.mu + result.delta[c];
                         out_d_exp_lev << "\t" << std::sqrt(result.var_mu + result.var_delta[c]);
@@ -416,7 +417,7 @@ int main(int argc, char **argv)
                         out_var_gene << result.var_gene << "\n";
                         // Write likelihood
                         out_lik << gene_names[g];
-                        for (k = 0; k < numbin; ++k)
+                        for (int k = 0; k < numbin; ++k)
                         {
                             out_lik << "\t" << result.lik[k];
                         }
