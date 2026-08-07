@@ -47,7 +47,7 @@ struct RowComputation
 };
 
 /***Function declarations ****/
-RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, double vmin, double vmax, int C, int numbin, int v_method);
+RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method);
 double get_epsilon_2(double &d, double &v, double &n, double &f);
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
 static void show_usage(void);
@@ -177,7 +177,13 @@ int main(int argc, char **argv)
         }
     }
 
+    // Grid of candidate gene variances, computed once here and shared with
+    // get_gene_expression_level rather than being recomputed there. Each value must stay exactly
+    // vmin * exp(deltav * k), with deltav formed exactly as below, to keep the output bit-identical.
     double deltav = std::log(vmax / vmin) / ((double)numbin - 1);
+    std::vector<double> v_grid(numbin);
+    for (int kk = 0; kk < numbin; ++kk)
+        v_grid[kk] = vmin * std::exp(deltav * kk);
 
     // create output folder if it does not exist
     int mkdir_result = 0;
@@ -301,7 +307,7 @@ int main(int argc, char **argv)
             out_lik << "Variance";
             for (k = 0; k < (numbin); ++k)
             {
-                out_lik << "\t" << vmin * std::exp(deltav * k);
+                out_lik << "\t" << v_grid[k];
             }
             out_lik << "\n";
 
@@ -322,7 +328,7 @@ int main(int argc, char **argv)
         for (int g = 0; g < G; ++g)
         {
             std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
-            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], vmin, vmax, C, numbin, v_method);
+            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
             #pragma omp ordered
             {
                 // output esimated running time
@@ -427,7 +433,7 @@ int main(int argc, char **argv)
 }
 
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c,
-                                         double n, double vmin, double vmax, int C, int numbin,
+                                         double n, const std::vector<double> &v_grid, int C, int numbin,
                                          int v_method)
 {
     // n = total counts for the gene
@@ -461,12 +467,10 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     double Lmax = -1e+100;
     int Lmax_ind = 0;
     double v;
-    double deltav;
-    deltav = std::log(vmax / vmin) / ((double)numbin - 1);
 
     for (k = 0; k < numbin; ++k)
     {
-        v = vmin * std::exp(deltav * k);
+        v = v_grid[k];
         beta = 1.0 / (n * v);
         q = fitfrac(f, n_c, n, v, C, N_c, prev_q);
         prev_q = q;
@@ -561,7 +565,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         // gene variance. This is the only prior in effect anywhere in this computation.
         double mapmax = -1e+100;
         for (k = 0; k < numbin; k++)    {
-            double curv = vmin * std::exp(deltav * k);
+            double curv = v_grid[k];
 
             if (lik[k]/curv > mapmax)
             {
@@ -573,12 +577,12 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     else if(v_method == 3){
         double postmean = 0.0;
         for (k = 0; k < numbin; k++)    {
-            double curv = vmin * std::exp(deltav * k);
+            double curv = v_grid[k];
             postmean += lik[k] * curv;
         }
         double mindist = 1e+100;
         for (k = 0; k < numbin; k++)    {
-            double curv = vmin * std::exp(deltav * k);
+            double curv = v_grid[k];
             if (std::fabs(curv - postmean) < mindist)
             {
                 mindist = std::fabs(curv - postmean);
@@ -625,7 +629,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         var_gene = 0.0;
         for (k = 0; k < numbin; ++k)
         {
-            v = vmin * std::exp(deltav * k);
+            v = v_grid[k];
             var_gene += v * lik[k];
         }
     }
@@ -633,7 +637,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     if (v_method > 0)
     {
         // Store the gene-variance that maximizes the likelihood:
-        var_gene = vmin * std::exp(deltav * vindex);
+        var_gene = v_grid[vindex];
         // And then also the corresponding values for the LTQs etc.
         mu = mu_v[vindex];
         var_mu = Psi_1((double)n);
