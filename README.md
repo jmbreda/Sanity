@@ -94,7 +94,7 @@ The MTX file can be compressed with gzip (with `.gz` extension).
     -v_m, --v_method                    Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
     -vmin, --variance_min               Minimal value of variance in log transcription quotient (default: 0.001)
     -vmax, --variance_max               Maximal value of variance in log transcription quotient (default: 50)
-    -nbin, --number_of_bins.            Number of bins for the variance in log transcription quotient  (default: 160)
+    -nbin, --number_of_variance_bins    Number of bins for the variance in log transcription quotient  (default: 160)
     -no_norm, --no_cell_size_normalization  Option to skip cell size normalization (default: false, choice: false,0,true,1)
 ```
 

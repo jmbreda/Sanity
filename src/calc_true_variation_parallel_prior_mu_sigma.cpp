@@ -741,8 +741,8 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-mtx_cells", "--mtx_cell_name_file"},
                              {"-no_norm", "--no_cell_size_normalization"},
                              {"-v_m", "--v_method"},
-                             {"--gz", "--gzip-output"},
-                             {"--npy", "--npy-output"}};
+                             {"-gz", "--gzip_output"},
+                             {"-npy", "--npy_output"}};
 
     int j;
     int idx;
@@ -751,17 +751,34 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         idx = 0;
         for (i = 1; i < argc; i++)
         {
-            if (argv[i] == to_find[j][0] || argv[i] == to_find[j][1])
+            // The j == 11 / j == 12 entries are the development-only output flags (see below).
+            // Their original spellings ("--gz"/"--gzip-output" and "--npy"/"--npy-output") stay
+            // accepted so that existing scripts keep working; they are matched here rather than as
+            // extra to_find rows because the table is indexed by position.
+            const std::string arg_i(argv[i]);
+            const bool legacy_spelling =
+                (j == 11 && (arg_i == "--gz" || arg_i == "--gzip-output")) ||
+                (j == 12 && (arg_i == "--npy" || arg_i == "--npy-output"));
+            if (arg_i == to_find[j][0] || arg_i == to_find[j][1] || legacy_spelling)
             {
+                // Both flags are experimental and deliberately undocumented: they appear neither
+                // in README.md nor in show_usage(). Neither takes an argument.
+                //   -npy silently overrides -e and -gz (see the block at the end of this function)
+                //   and writes a different SET of outputs, not merely a different format:
+                //   delta.npy, d_delta.npy, mu.npy, variance.npy plus geneID.txt and cellID.txt,
+                //   and NOT log_transcription_quotients, ltq_error_bars, likelihood or d_mu.
+                //   d_delta.npy holds standard deviations, not variances.
+                //   -gz output cannot be read back by Sanity_distance or Sanity_gene_correlation,
+                //   which open delta.txt with a plain fopen and have no zlib path.
                 if (j == 11)
                 {
                     gzip_output = true;
-                    continue; // no argument expected for --gz
+                    continue; // no argument expected for -gz
                 }
                 if (j == 12)
                 {
                     npy_output = true;
-                    continue; // no argument expected for --npy
+                    continue; // no argument expected for -npy
                 }
                 idx = i;
                 if (idx + 1 > argc - 1)
@@ -831,7 +848,10 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         return ERROR;
     }
 
-    // if npy is on the turn off gzip output and print extended output
+    // -npy silently overrides both -e and -gz rather than rejecting the combination: the npy path
+    // writes its own fixed set of files (delta/d_delta/mu/variance .npy plus geneID.txt and
+    // cellID.txt), so there is no extended output to print and no text stream to compress.
+    // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
     if(npy_output){
         gzip_output = false;
         print_extended_output = false;
@@ -885,7 +905,7 @@ static void show_usage(void)
               << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
-              << "\t-nbin,--number_of_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
+              << "\t-nbin,--number_of_variance_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
               << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
               << "\t-v_m,--v_method\t\tOption to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)\n";
 }
