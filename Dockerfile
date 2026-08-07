@@ -18,7 +18,7 @@ LABEL maintainer.lab="Erik van Nimwegen Lab"
 
 ##### VARIABLES #####
 # Use variables for convenient updates/re-usability
-ENV SOFTWARE_VERSION 2.0
+ENV SOFTWARE_VERSION=2.0
 
 RUN apt-get update \
   && apt-get install -y tzdata \
@@ -35,16 +35,18 @@ RUN apt-get update \
   && apt-get remove --purge --yes git make g++ \
   && apt-get autoremove --purge --yes
 
-CMD ["/bin/sh", "-c", "cat <<'EOF'\n##### USAGE #####\n# Build:\n# docker build -t jmbreda/sanity:2.0 .\n# Run:\n# - Start image with mounting working directory to /mnt\n#   docker run -d --name sanity -v [path to working dir]:mnt -t jmbreda/sanity:2.0 > /dev/null\n# - Run Sanity:\n#  docker exec -w mnt -t sanity bash -c \"/usr/bin/Sanity -f [data.tsv] -d sanity_results -e1 -n 1\"\n# - Stop and remove container:\n#  docker stop sanity && docker rm sanity\n#### ####\nEOF"]
+# Sanity itself is PID 1, so the container lives exactly as long as the run and exits with the
+# tool's own exit code. Arguments given to `docker run` after the image name are passed straight
+# through to Sanity. With no arguments the CMD default prints Sanity's own help, which cannot
+# drift from the actual set of options the way a hand-written usage block does.
+ENTRYPOINT ["/usr/bin/Sanity"]
+CMD ["--help"]
 
 #### USAGE ####
 # Build:
 # docker build -t jmbreda/sanity:2.0 .
-# Run:
-# - Start image with mounting working directory to /mnt
-#   docker run -d --name sanity -v [path to working dir]:mnt -t jmbreda/sanity:2.0 > /dev/null
-# - Run Sanity:
-#  docker exec -w mnt -t sanity bash -c "/usr/bin/Sanity -f [data.tsv] -d sanity_results -e1 -n 1"
-# - Stop and remove container:
-#  docker stop sanity && docker rm sanity
+# Show the available options:
+#  docker run --rm jmbreda/sanity:2.0
+# Run Sanity on data in the current directory, writing results back to it:
+#  docker run --rm -v "$PWD":/mnt -w /mnt jmbreda/sanity:2.0 -f [data.tsv] -d sanity_results -e 1 -n 1
 #### ####
