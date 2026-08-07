@@ -26,6 +26,6 @@ Python script `compare.py` requires the `numpy` library (`pip3 install numpy` if
     ```bash
     python3 compare.py
     ```
-    Details on differences are saved in `compare.log` (overwritten on each run, not tracked in git).
+    Details on differences are saved in `compare.log`, which is truncated at the start of each run and covers all four methods. It is not tracked in git.
 
-Note: `compare.py` always exits with code 0, even when a method fails. Check the printed "PASSED"/"FAILED" lines (and `compare.log` for details) rather than the exit code.
+Note: `compare.py` exits with code 0 if every method passed, and 1 if any method FAILED, so it can be used in a script or CI. A method whose results differ but are within the `numpy.isclose` tolerances is reported as "PASSED with acceptable differences" and counts as a pass.

@@ -51,12 +51,17 @@ if __name__ == "__main__":
     sanity_out_dir = "sanity_output"
 
     methods = ["MAP", "EAP", "MLE", "MARG"]
+
+    # Truncate the log once, before any method runs. compare() opens it in append mode as it finds
+    # differences, so truncating inside the loop would discard the earlier methods' details.
+    with open("compare.log", "wt"):
+        pass
+
+    failed_methods = []
+    methods_with_differences = []
     for method in methods:
 
         default_results = "default_output_{}".format(method)
-
-        with open("compare.log", "at") as fout:
-            pass  # Clear log file
 
         print("Running Sanity comparison test for method {}".format(method))
         with open("compare.log", "at") as fout:
@@ -69,10 +74,24 @@ if __name__ == "__main__":
         if result == 0:
             result = "PASSED"
         elif result == 1:
+            # Values differ but are within numpy.isclose tolerances: treated as success.
             result = "PASSED with acceptable differences"
+            methods_with_differences.append(method)
         else:
             result = "FAILED"
+            failed_methods.append(method)
         print("Test for method {} passed: {}\n".format(method, result))
 
         if result != "PASSED":
             print("See compare.log for details")
+
+    if failed_methods:
+        print("FAILED for: {}. See compare.log for details.".format(", ".join(failed_methods)))
+        sys.exit(1)
+    if methods_with_differences:
+        print("All methods passed, but the results were not exactly identical for: {}. "
+              "The differences are within the numpy.isclose tolerances and count as passing; "
+              "see compare.log for details.".format(", ".join(methods_with_differences)))
+    else:
+        print("All methods passed, with results exactly identical to the reference output.")
+    sys.exit(0)
