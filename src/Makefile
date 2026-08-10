@@ -27,8 +27,13 @@ endif
 
 CFLAGS= -I. -std=c++17 -O3 $(ARCH_FLAG) -flto=auto -fopenmp -fno-math-errno
 LDFLAGS= -lz
-Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o
-	$(CC) $(CFLAGS) -o ../bin/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o $(LDFLAGS)
+BINDIR := ../bin
+
+Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o | $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o $(LDFLAGS)
+
+$(BINDIR):
+	mkdir -p $(BINDIR)
 
 calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp npy_writer.hpp Version.h
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
@@ -48,14 +53,14 @@ FukushimaLambertW.o: FukushimaLambertW.cc FukushimaLambertW.h
 Digamma_Trigamma.o: Digamma_Trigamma.cpp Digamma_Trigamma.h
 	$(CC) $(CFLAGS) -c Digamma_Trigamma.cpp
 
-Sanity_distance: compute_distance.o
-	$(CC) $(CFLAGS) -o ../bin/Sanity_distance compute_distance.o
+Sanity_distance: compute_distance.o | $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity_distance compute_distance.o
 
 compute_distance.o: compute_distance.cpp Version.h
 	$(CC) $(CFLAGS) -c compute_distance.cpp
 
-Sanity_gene_correlation:  compute_gene_correlations.o
-	$(CC) $(CFLAGS) -o ../bin/Sanity_gene_correlation compute_gene_correlations.o
+Sanity_gene_correlation:  compute_gene_correlations.o | $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity_gene_correlation compute_gene_correlations.o
 
 compute_gene_correlations.o: compute_gene_correlations.cpp Version.h
 	$(CC) $(CFLAGS) -c compute_gene_correlations.cpp
@@ -64,5 +69,4 @@ compute_gene_correlations.o: compute_gene_correlations.cpp Version.h
 
 clean:
 	rm -f *.o
-	rm -f ../bin/Sanity ../bin/Sanity_distance ../bin/Sanity_gene_correlation
-
+	rm -f $(BINDIR)/Sanity $(BINDIR)/Sanity_distance $(BINDIR)/Sanity_gene_correlation
