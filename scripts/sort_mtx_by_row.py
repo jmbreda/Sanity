@@ -21,7 +21,9 @@ def main():
     input_file = args.input_file
     if args.output_file is None:
         filename = os.path.basename(input_file)
-        output_file = os.path.join(os.path.dirname(input_file), "sorted_" + filename + ".gz")
+        output_file = os.path.join(os.path.dirname(input_file), "sorted_" + filename)
+        if not filename.lower().endswith(".gz"):
+            output_file += ".gz"
     else:
         output_file = args.output_file
     temp_file = output_file + "_tmp"
