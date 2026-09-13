@@ -229,6 +229,9 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         exit(EXIT_FAILURE);
     }
 
+    // Text input is tab-separated only.
+    // Commas and spaces are part of a field, not separators, so that gene and cell
+    // names may contain them.
     // Count cell. First line should have the names of the columns (cell names)
     char *ss = infp.getline();
     if (ss == nullptr)
@@ -238,7 +241,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
     }
     char *saveptr = nullptr;
 
-    char *token = strtok_r(ss, " \t,", &saveptr);
+    char *token = strtok_r(ss, "\t\r\n", &saveptr);
     cell_names.clear();
     if (token == NULL)
     {
@@ -262,7 +265,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
             name.erase(pos, 1);
         }
         cell_names.push_back(name);
-        token = strtok_r(NULL, " \t,", &saveptr);
+        token = strtok_r(NULL, "\t\r\n", &saveptr);
     }
 
     // PASS 1: Sequential scan to record all line offsets
@@ -289,12 +292,12 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
                 // Count the fields the same way the rows are tokenized below.
                 std::vector<char> row_copy(ss, ss + strlen(ss) + 1);
                 char *count_saveptr = nullptr;
-                char *count_token = strtok_r(row_copy.data(), " \t,", &count_saveptr);
+                char *count_token = strtok_r(row_copy.data(), "\t\r\n", &count_saveptr);
                 N_fields_first_row = 0;
                 while (count_token)
                 {
                     ++N_fields_first_row;
-                    count_token = strtok_r(NULL, " \t,", &count_saveptr);
+                    count_token = strtok_r(NULL, "\t\r\n", &count_saveptr);
                 }
             }
             line_offsets.push_back(row_offset);
@@ -319,6 +322,15 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         exit(EXIT_FAILURE);
     }
     C = static_cast<int>(cell_names.size());
+
+    // No cell columns at all means the tab characters are missing, which is what a
+    // comma- or space-separated file looks like to this parser.
+    if (C == 0)
+    {
+        fprintf(stderr, "Error: no cell columns found in %s. Sanity only reads tab-separated input; "
+                        "convert comma- or space-separated files to TSV first.\n", in_file.c_str());
+        exit(EXIT_FAILURE);
+    }
 
     if (N_rows == 0)
     {
@@ -381,7 +393,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
             std::strncpy(thread_sc, thread_ss, static_cast<std::size_t>(strlen(thread_ss) + 1));
             thread_sc[strlen(thread_ss)] = '\0';
 
-            thread_token = strtok_r(thread_sc, " \t,", &thread_saveptr);
+            thread_token = strtok_r(thread_sc, "\t\r\n", &thread_saveptr);
             if (thread_token == NULL)
             {
                 delete[] thread_sc;
@@ -403,7 +415,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
             bool row_parse_failed = false;
             for (int c = 0; c < C; ++c)
             {
-                thread_token = strtok_r(NULL, " \t,", &thread_saveptr);
+                thread_token = strtok_r(NULL, "\t\r\n", &thread_saveptr);
                 if (thread_token != NULL)
                 {
                     double value = std::stod(thread_token); /**total count this gene**/
@@ -428,7 +440,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
             }
             // Mirror of the check above: a row with more values than cells means the
             // file does not match the header, so do not silently drop the extra ones.
-            if (!row_parse_failed && strtok_r(NULL, " \t,", &thread_saveptr) != NULL)
+            if (!row_parse_failed && strtok_r(NULL, "\t\r\n", &thread_saveptr) != NULL)
             {
                 #pragma omp critical
                 {
