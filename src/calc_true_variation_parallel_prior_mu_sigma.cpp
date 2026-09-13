@@ -956,7 +956,7 @@ static void show_usage(void)
               << "Options:\n"
               << "\t-h,--help\t\tShow this help message\n"
               << "\t-v,--version\t\tShow the current version\n"
-              << "\t-f,--file\t\tSpecify the input transcript count text file (.mtx for Matrix Market File Format)\n"
+              << "\t-f,--file\t\tSpecify the input transcript count file: tab-separated values (.tsv) or Matrix Market File Format (.mtx)\n"
               << "\t-mtx_genes,--mtx_gene_name_file\tSpecify the gene name text file (only needed if .mtx input file)\n"
               << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
               << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"

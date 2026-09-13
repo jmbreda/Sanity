@@ -17,7 +17,7 @@ The scripts used for running the benchmarked normalization methods and for makin
 
 ## Input
 
-* `-f`: UMI count matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. Format: tab-separated, comma-separated, or space-separated values. (`'path/to/text_file'`)
+* `-f`: UMI count matrix: *(N<sub>g</sub> x N<sub>c</sub>)* matrix with *N<sub>g</sub>* the number of genes and *N<sub>c</sub>* the number of cells. (`'path/to/count_matrix.tsv'`)
 
 | GeneID | Cell 1 | Cell 2 | Cell 3 | ... |
 |:-------|:------:|:------:|:------:|:---:|
@@ -25,7 +25,16 @@ The scripts used for running the benchmarked normalization methods and for makin
 | Gene 2 | 6.0 | 3.0 | 1.0 | ... |
 | ... | ... | ... | ... | ... |
 
-The count matrix can be compressed with gzip (with `.gz` extension).
+**The count matrix must be tab-separated (TSV).**
+The tab character is the only field separator Sanity accepts: comma-separated (CSV) and space-separated files are *not* supported and will be misread.
+Convert them to TSV before running Sanity, for example with `pandas.DataFrame.to_csv(path, sep='\t')` or `awk 'BEGIN{FS=",";OFS="\t"}{$1=$1;print}' in.csv > out.tsv`.
+Because tabs alone delimit fields, gene and cell names may contain spaces and commas.
+
+The first line is the header with the cell names.
+It may either start with a label for the gene-ID column (the same number of fields as a data row) or start straight away with the first cell name (one field fewer, as written by `pandas.DataFrame.to_csv`).
+Every data row must have exactly one gene ID followed by one value per cell; Sanity stops with an error if a row has too few or too many fields.
+
+The count matrix can be compressed with gzip (with `.tsv.gz` extension).
 
 * `-f`: (Alternatively) Matrix Market File Format: Sparse matrix of UMI counts. Automatically recognized by `.mtx` extension of the input file. Example: `matrix.mtx` by cellranger 2.1.0 and 3.1.0 (10x Genomics). (`'path/to/text_file.mtx'`)
 **Important**: MTX file should be sorted by row (gene) indices! If not then you can use `sort_mtx_by_row.py` script in the `Sanity/scripts` folder to sort it. See [Sorting MTX file by row (gene) indices](#sorting-mtx-file-by-row-gene-indices).
