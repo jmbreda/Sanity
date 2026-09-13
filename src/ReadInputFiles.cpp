@@ -245,8 +245,9 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         fprintf(stderr, "Error: header line missing first field in %s\n", in_file.c_str());
         exit(EXIT_FAILURE);
     }
-    // remaining tokens are cell names
-    token = strtok_r(NULL, " \t,", &saveptr);
+    // Collect every header field.
+    // Whether the first one is a cell name or only a label for the gene-ID column
+    // is decided below, once the number of fields on a data row is known.
     while (token)
     {
         std::string name(token);
@@ -263,10 +264,10 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         cell_names.push_back(name);
         token = strtok_r(NULL, " \t,", &saveptr);
     }
-    C = static_cast<int>(cell_names.size());
 
     // PASS 1: Sequential scan to record all line offsets
     std::vector<long long> line_offsets;
+    int N_fields_first_row = -1;
     N_rows = 0;
 
     while (true)
@@ -283,11 +284,41 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         }
         else
         {
+            if (N_fields_first_row < 0)
+            {
+                // Count the fields the same way the rows are tokenized below.
+                std::vector<char> row_copy(ss, ss + strlen(ss) + 1);
+                char *count_saveptr = nullptr;
+                char *count_token = strtok_r(row_copy.data(), " \t,", &count_saveptr);
+                N_fields_first_row = 0;
+                while (count_token)
+                {
+                    ++N_fields_first_row;
+                    count_token = strtok_r(NULL, " \t,", &count_saveptr);
+                }
+            }
             line_offsets.push_back(row_offset);
             ++N_rows;
         }
     }
     infp.close();
+
+    // A data row holds one gene-ID field followed by one value per cell.
+    // Headers come in two flavours: with a label for the gene-ID column (as many
+    // fields as a data row) or without one (one field fewer, as written by
+    // pandas.DataFrame.to_csv).
+    // Only in the first case is the leading header field not a cell name.
+    if (N_fields_first_row < 0 || static_cast<int>(cell_names.size()) == N_fields_first_row)
+    {
+        cell_names.erase(cell_names.begin());
+    }
+    else if (static_cast<int>(cell_names.size()) + 1 != N_fields_first_row)
+    {
+        fprintf(stderr, "Error: header line has %d fields but the first data row has %d in %s\n",
+                static_cast<int>(cell_names.size()), N_fields_first_row, in_file.c_str());
+        exit(EXIT_FAILURE);
+    }
+    C = static_cast<int>(cell_names.size());
 
     if (N_rows == 0)
     {
@@ -394,6 +425,22 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
                     row_parse_failed = true;
                     break;
                 }
+            }
+            // Mirror of the check above: a row with more values than cells means the
+            // file does not match the header, so do not silently drop the extra ones.
+            if (!row_parse_failed && strtok_r(NULL, " \t,", &thread_saveptr) != NULL)
+            {
+                #pragma omp critical
+                {
+                    if (!parse_error.load())
+                    {
+                        parse_error = true;
+                        parse_error_row = row_idx + 1;
+                        parse_error_msg = "Error: too many fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
+                        parse_error_line = thread_sc ? thread_sc : "";
+                    }
+                }
+                row_parse_failed = true;
             }
             delete[] thread_sc;
             thread_sc = nullptr;
