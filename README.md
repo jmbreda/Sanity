@@ -63,6 +63,15 @@ one gene row, and complete rows are written in gene order. Formatting uses the
 same `-n` worker count as inference; there is no separate writer thread setting.
 The number of formatted rows held in memory is bounded by the worker count.
 
+For zero-count cells, uncertainty is calculated from the positive displacement
+`e` at which `e*(2*delta+e)/(2*v) + n*log(1+f*(exp(e)-1)) = 0.5`.
+Here `n` is the total count for the gene and `f` its fitted fraction for the cell.
+Sanity evaluates the full logarithm with `log1p` and `expm1`, with an overflow-safe
+form for large displacements. The likelihood-drop tolerance remains `1e-7`.
+This changes zero-count uncertainty relative to the previous logarithm
+linearization; it retains the existing Gaussian uncertainty model and does not
+change the fitted means, likelihood grid or selected gene variance.
+
 ## Output
 
 * `log_transcription_quotients.txt`: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.

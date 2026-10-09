@@ -1,4 +1,6 @@
 #include <cctype>
+#include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <cstring>
 #include <iostream>
@@ -686,32 +688,30 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
 
 double get_epsilon_2(double d, double v, double n, double f)
 {
-
-    double e;
-    double dL;
-    double e_low = 0.0;
-    double e_high = 0.0;
-    double vnf = v * n * f;
-    e_high = (-(d + vnf) + std::sqrt((d + vnf) * (d + vnf) + v * (1.0 + vnf))) / (1.0 + vnf);
-
-    // bisection method :
-    double tol = 0.0000001;
-    double diff = 1.0;
-    while (diff > tol)
+    // Find the positive displacement whose log-likelihood drop is 1/2.
+    // Keep log(1 + f*(exp(e)-1)) rather than linearizing the logarithm.
+    auto drop = [&](double e) {
+        const double logarithm = e < 700 ? std::log1p(f * std::expm1(e))
+                                        : e + std::log(f + (1 - f) * std::exp(-e));
+        return e * (2 * d + e) / (2 * v) + n * logarithm;
+    };
+    double lo = 0, hi = 1;
+    // The upper bound for the linearized formula need not bracket this root.
+    while (drop(hi) < 0.5)
     {
-        e = (e_high + e_low) / 2.0;
-        dL = e * (2.0 * d + e) / (2.0 * v) + n * f * (std::exp(e) - 1.0);
-        if (dL < 0.5)
-        {
-            e_low = e;
-        }
-        else
-        {
-            e_high = e;
-        }
-        diff = std::fabs(dL - 0.5);
+        hi *= 2;
+        if (!std::isfinite(hi)) throw std::runtime_error("Cannot bracket zero-count uncertainty");
     }
-    return e * e;
+    for (int iteration = 0; iteration < 200; ++iteration)
+    {
+        const double e = (lo + hi) / 2;
+        const double value = drop(e);
+        if (!std::isfinite(value)) throw std::runtime_error("Nonfinite zero-count likelihood");
+        if (std::fabs(value - 0.5) <= 1e-7) return e * e;
+        if (value < 0.5) lo = e; else hi = e;
+        if (hi - lo <= 1e-14 * std::max(1.0, hi)) return e * e;
+    }
+    throw std::runtime_error("Zero-count uncertainty did not converge");
 }
 
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output)
