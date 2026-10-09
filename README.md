@@ -58,6 +58,11 @@ calculates cell uncertainties only for the selected output bin. MARG still
 calculates uncertainties at every bin because it averages over the grid.
 The variance grid, bin selection and uncertainty formulas are unchanged.
 
+Text output uses fixed six-decimal formatting. Each inference worker formats
+one gene row, and complete rows are written in gene order. Formatting uses the
+same `-n` worker count as inference; there is no separate writer thread setting.
+The number of formatted rows held in memory is bounded by the worker count.
+
 ## Output
 
 * `log_transcription_quotients.txt`: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
@@ -113,6 +118,10 @@ The variance grid, bin selection and uncertainty formulas are unchanged.
 ```
 
 ## Installation
+
+Text formatting requires floating-point `std::to_chars` support in the C++17
+standard library.
+
 * Clone the GitHub repository
 ```
 git clone https://github.com/jmbreda/Sanity.git

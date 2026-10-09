@@ -10,6 +10,7 @@
 #include <chrono>
 #include <sstream>
 #include <memory>
+#include <exception>
 #include <cerrno>
 #include <cstdlib>
 #include <sys/stat.h> // For mkdir on Unix-like systems
@@ -25,6 +26,7 @@
 #include "FitFrac.h"
 #include "Digamma_Trigamma.h"
 #include "Writer.hpp"
+#include "FormatOutput.hpp"
 #include "npy_writer.hpp"
 #include "Version.h"
 
@@ -317,6 +319,7 @@ int main(int argc, char **argv)
         }
     }
 
+    std::exception_ptr output_failure;
     logging_debug("Fit gene expression levels");
     const std::clock_t begin = std::clock();
     #pragma omp parallel num_threads(N_threads)
@@ -325,8 +328,17 @@ int main(int argc, char **argv)
         #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < G; ++g)
         {
-            std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
-            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+            RowComputation result;
+            sanity::FormattedOutput formatted;
+            std::exception_ptr local_failure;
+            try
+            {
+                std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
+                result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+                if (!npy_output)
+                    formatted = sanity::format_output_row(result, gene_names[g], print_extended_output);
+            }
+            catch (...) { local_failure = std::current_exception(); }
             // The `ordered` clause is what makes the writes below safe: it serialises this block
             // across threads and runs it in ascending g, so the output rows stay in gene order and
             // the shared output streams are never written concurrently.
@@ -372,62 +384,45 @@ int main(int argc, char **argv)
                     logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(G));
                 }
 
-                // write output
-                if (npy_output) {
-                    out_delta_npy->write_row(result.delta);
-                    // transform var_delta to standard deviation before writing to file
-                    for (double &v : result.var_delta) {
-                        v = std::sqrt(v);
-                    }
-                    out_ddelta_npy->write_row(result.var_delta);
-                    out_mu_npy->write_row(&result.mu, 1);
-                    out_var_gene_npy->write_row(&result.var_gene, 1);
-                }
-                else {
-                    out_exp_lev << gene_names[g];
-                    out_d_exp_lev << gene_names[g];
-                    for (int c = 0; c < C; c++)
+                if (local_failure && !output_failure) output_failure = local_failure;
+                if (!output_failure)
+                {
+                    try
                     {
-                        out_exp_lev << "\t" << result.mu + result.delta[c];
-                        out_d_exp_lev << "\t" << std::sqrt(result.var_mu + result.var_delta[c]);
-                        if (print_extended_output)
+                        // write output
+                        if (npy_output) {
+                            out_delta_npy->write_row(result.delta);
+                            // transform var_delta to standard deviation before writing to file
+                            for (double &v : result.var_delta) {
+                                v = std::sqrt(v);
+                            }
+                            out_ddelta_npy->write_row(result.var_delta);
+                            out_mu_npy->write_row(&result.mu, 1);
+                            out_var_gene_npy->write_row(&result.var_gene, 1);
+                        }
+                        else
                         {
-                            out_delta << result.delta[c];
-                            out_ddelta << std::sqrt(result.var_delta[c]);
-                            if (c < C - 1)
+                            out_exp_lev.write_raw(formatted.ltq);
+                            out_d_exp_lev.write_raw(formatted.ltq_error);
+                            if (print_extended_output)
                             {
-                                out_delta << "\t";
-                                out_ddelta << "\t";
+                                out_delta.write_raw(formatted.delta);
+                                out_ddelta.write_raw(formatted.delta_error);
+                                out_mu.write_raw(formatted.mu);
+                                out_dmu.write_raw(formatted.mu_error);
+                                out_var_gene.write_raw(formatted.variance);
+                                out_lik.write_raw(formatted.likelihood);
+                                out_gene.write_raw(gene_names[g] + "\n");
                             }
                         }
                     }
-                    out_exp_lev << "\n";
-                    out_d_exp_lev << "\n";
-
-                    if (print_extended_output)
-                    {
-                        out_delta << "\n";
-                        out_ddelta << "\n";
-                        // Write gene names
-                        out_gene << gene_names[g].c_str() << "\n";
-                        // print best fit to file : mu, delta
-                        //  Print diagonal of invM : variance of mu, delta
-                        out_mu << result.mu << "\n";
-                        out_dmu << std::sqrt(result.var_mu) << "\n";
-                        out_var_gene << result.var_gene << "\n";
-                        // Write likelihood
-                        out_lik << gene_names[g];
-                        for (int k = 0; k < numbin; ++k)
-                        {
-                            out_lik << "\t" << result.lik[k];
-                        }
-                        out_lik << "\n";
-                    }
+                    catch (...) { output_failure = std::current_exception(); }
                 }
             }
         }
     }
 
+    if (output_failure) std::rethrow_exception(output_failure);
     logging_debug("Finished fitting all genes");
 
     return 0;
