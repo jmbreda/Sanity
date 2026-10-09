@@ -53,7 +53,7 @@ struct RowComputation
 /***Function declarations ****/
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method);
 double get_epsilon_2(double d, double v, double n, double f);
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
@@ -91,9 +91,10 @@ int main(int argc, char **argv)
     int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
     bool gzip_output = false;
     bool npy_output = false;
+    bool bonsai_output_mode = false;
     std::string out_suffix = "";
 
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output);
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output, bonsai_output_mode);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -211,6 +212,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (bonsai_output_mode)
+    {
+        for (const char* filename : {"log_transcription_quotients.txt", "ltq_error_bars.txt",
+                                    "d_mu.txt", "likelihood.txt"})
+        {
+            struct stat previous;
+            if (stat((out_folder + filename).c_str(), &previous) == 0)
+            {
+                logging_debug("Bonsai output mode requires a folder without existing full-output files: " + out_folder);
+                return 1;
+            }
+        }
+    }
+
     // save version and command with parameters to a file
     std::ofstream cmd_file(out_folder + "sanity_command.txt", std::ios::trunc);
     std::time_t now = std::time(NULL);
@@ -268,21 +283,24 @@ int main(int argc, char **argv)
     else {
         if (gzip_output) {out_suffix = ".gz";}
 
-        out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
-        out_exp_lev << std::fixed << std::setprecision(6);
-
-        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
-        out_d_exp_lev << std::fixed << std::setprecision(6);
-
-        out_exp_lev << "GeneID";
-        out_d_exp_lev << "GeneID";
-        for (int c = 0; c < C; c++)
+        if (!bonsai_output_mode)
         {
-            out_exp_lev << "\t" << cell_names[c].c_str();
-            out_d_exp_lev << "\t" << cell_names[c].c_str();
+            out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
+            out_exp_lev << std::fixed << std::setprecision(6);
+
+            out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
+            out_d_exp_lev << std::fixed << std::setprecision(6);
+
+            out_exp_lev << "GeneID";
+            out_d_exp_lev << "GeneID";
+            for (int c = 0; c < C; c++)
+            {
+                out_exp_lev << "\t" << cell_names[c].c_str();
+                out_d_exp_lev << "\t" << cell_names[c].c_str();
+            }
+            out_exp_lev << "\n";
+            out_d_exp_lev << "\n";
         }
-        out_exp_lev << "\n";
-        out_d_exp_lev << "\n";
         if (print_extended_output)
         {
 
@@ -291,8 +309,11 @@ int main(int argc, char **argv)
             out_mu.open(out_folder + "mu.txt" + out_suffix);
             out_mu << std::fixed << std::setprecision(6);
 
-            out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
-            out_dmu << std::fixed << std::setprecision(6);
+            if (!bonsai_output_mode)
+            {
+                out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
+                out_dmu << std::fixed << std::setprecision(6);
+            }
 
             out_var_gene.open(out_folder + "variance.txt" + out_suffix);
             out_var_gene << std::fixed << std::setprecision(6);
@@ -303,15 +324,19 @@ int main(int argc, char **argv)
             out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
             out_ddelta << std::fixed << std::setprecision(6);
 
-            out_lik.open(out_folder + "likelihood.txt" + out_suffix);
-            out_lik << std::fixed << std::setprecision(6);
-
-            out_lik << "Variance";
-            for (int k = 0; k < (numbin); ++k)
+            if (!bonsai_output_mode)
             {
-                out_lik << "\t" << v_grid[k];
+                out_lik.open(out_folder + "likelihood.txt" + out_suffix);
+                out_lik << std::fixed << std::setprecision(6);
+
+                out_lik << "Variance";
+                for (int k = 0; k < (numbin); ++k)
+                {
+                    out_lik << "\t" << v_grid[k];
+                }
+                out_lik << "\n";
+
             }
-            out_lik << "\n";
 
             // save cell names
             for (int c = 0; c < C; c++)
@@ -321,6 +346,8 @@ int main(int argc, char **argv)
         }
     }
 
+    const auto text_output_mode = bonsai_output_mode ? sanity::TextOutputMode::Bonsai
+        : print_extended_output ? sanity::TextOutputMode::Extended : sanity::TextOutputMode::Standard;
     std::exception_ptr output_failure;
     logging_debug("Fit gene expression levels");
     const std::clock_t begin = std::clock();
@@ -338,7 +365,7 @@ int main(int argc, char **argv)
                 std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
                 result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
                 if (!npy_output)
-                    formatted = sanity::format_output_row(result, gene_names[g], print_extended_output);
+                    formatted = sanity::format_output_row(result, gene_names[g], text_output_mode);
             }
             catch (...) { local_failure = std::current_exception(); }
             // The `ordered` clause is what makes the writes below safe: it serialises this block
@@ -404,16 +431,22 @@ int main(int argc, char **argv)
                         }
                         else
                         {
-                            out_exp_lev.write_raw(formatted.ltq);
-                            out_d_exp_lev.write_raw(formatted.ltq_error);
+                            if (!bonsai_output_mode)
+                            {
+                                out_exp_lev.write_raw(formatted.ltq);
+                                out_d_exp_lev.write_raw(formatted.ltq_error);
+                            }
                             if (print_extended_output)
                             {
                                 out_delta.write_raw(formatted.delta);
                                 out_ddelta.write_raw(formatted.delta_error);
                                 out_mu.write_raw(formatted.mu);
-                                out_dmu.write_raw(formatted.mu_error);
                                 out_var_gene.write_raw(formatted.variance);
-                                out_lik.write_raw(formatted.likelihood);
+                                if (!bonsai_output_mode)
+                                {
+                                    out_dmu.write_raw(formatted.mu_error);
+                                    out_lik.write_raw(formatted.likelihood);
+                                }
                                 out_gene.write_raw(gene_names[g] + "\n");
                             }
                         }
@@ -714,7 +747,7 @@ double get_epsilon_2(double d, double v, double n, double f)
     throw std::runtime_error("Zero-count uncertainty did not converge");
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
 {
 
     // Running with no arguments at all is a usage error, not a help request: main prints the usage
@@ -762,7 +795,8 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-no_norm", "--no_cell_size_normalization"},
                              {"-v_m", "--v_method"},
                              {"-gz", "--gzip_output"},
-                             {"-npy", "--npy_output"}};
+                             {"-npy", "--npy_output"},
+                             {"--bonsai-output-mode", "--bonsai-output-mode"}};
     // Derived from the table itself so the count cannot drift from the array.
     const int N_param = sizeof(to_find) / sizeof(to_find[0]);
 
@@ -782,9 +816,9 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         }
         return -1;
     };
-    // Only the two flags at indices 11 and 12 take no argument; every other known option takes
+    // Format flags and Bonsai output mode take no argument; other known options take
     // exactly one. -h/--help and -v/--version are handled earlier and never reach here.
-    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12; };
+    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12 || option_index == 13; };
 
     int j;
     int idx;
@@ -813,6 +847,11 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 {
                     npy_output = true;
                     continue; // no argument expected for -npy
+                }
+                if (j == 13)
+                {
+                    bonsai_output_mode = true;
+                    continue;
                 }
                 idx = i;
                 if (idx + 1 > argc - 1)
@@ -919,6 +958,15 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     // writes its own fixed set of files (delta/d_delta/mu/variance .npy plus geneID.txt and
     // cellID.txt), so there is no extended output to print and no text stream to compress.
     // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
+    if (bonsai_output_mode)
+    {
+        if (gzip_output || npy_output || v_method != 2)
+        {
+            logging_debug("Bonsai output mode requires plain-text MAP output; omit gzip/NPY flags and use -v_m MAP.");
+            return ERROR;
+        }
+        print_extended_output = true;
+    }
     if(npy_output){
         gzip_output = false;
         print_extended_output = false;
@@ -969,6 +1017,7 @@ static void show_usage(void)
               << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
               << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
               << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
+              << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (plain-text MAP)\n"
               << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
