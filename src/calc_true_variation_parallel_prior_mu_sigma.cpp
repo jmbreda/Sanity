@@ -443,11 +443,14 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     // C = number of cells
     // numbin = number of bins for v
     int i, k;
-    double beta, L, ldet, q, delsq, inv_v;
+    double beta, L, ldet, q, delsq;
     double prev_q = 0.0;
     double *f = new double[C];
     double **delta_v = new double *[numbin];
-    double **sig2_delta_v = new double *[numbin];
+    double **sig2_delta_v = new double *[numbin]();
+    // Marginalization needs uncertainty at every bin. Fixed-bin methods only
+    // need the fitted fractions until their output bin has been selected.
+    std::vector<std::vector<double>> fractions_v(v_method > 0 ? numbin : 0);
     std::vector<double> lik(numbin, -1.0);
     std::vector<double> delta(C, 0.0), var_delta(C, 0.0);
     double var_mu, var_gene;
@@ -455,7 +458,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     for (k = 0; k < numbin; ++k)
     {
         delta_v[k] = new double[C];
-        sig2_delta_v[k] = new double[C];
+        if (v_method == 0) sig2_delta_v[k] = new double[C];
     }
 
     /*** To compute var of delta ***/
@@ -468,6 +471,42 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     double Lmax = -1e+100;
     int Lmax_ind = 0;
     double v;
+
+    auto calculate_uncertainty = [&](const double* fractions, const double* bin_delta,
+                                     double variance, double* output) {
+        /* compute nf^2/(nf+1/sigma^2) for each c */
+        const double inv_v = 1.0 / variance;
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_c[i] = n * fractions[i] * fractions[i] / (n * fractions[i] + inv_v);
+        }
+        /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
+        sig2_delta_den1 = 1.0;
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_den1 -= sig2_delta_c[i];
+            sig2_delta_den2[i] = n * fractions[i] + inv_v;
+        }
+        /* compute the different terms in the numerator : remove the \tilde{c} terms */
+        for (i = 0; i < C; i++)
+        {
+            sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
+        }
+        /* compute sig2_delta */
+        for (i = 0; i < C; ++i)
+        {
+            output[i] = sig2_delta_num[i] / (sig2_delta_den1 * sig2_delta_den2[i]);
+        }
+
+        // fix computation of asymmetric sig2_delta for zero count
+        for (i = 0; i < C; ++i)
+        {
+            if (n_c[i] <= 0.5)
+            {
+                output[i] = get_epsilon_2(bin_delta[i], variance, n, fractions[i]);
+            }
+        }
+    };
 
     for (k = 0; k < numbin; ++k)
     {
@@ -509,37 +548,13 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
             Lmax_ind = k;
         }
 
-        /* compute nf^2/(nf+1/sigma^2) for each c */
-        inv_v = 1.0 / v;
-        for (i = 0; i < C; ++i)
+        if (v_method == 0)
         {
-            sig2_delta_c[i] = n * f[i] * f[i] / (n * f[i] + inv_v);
+            calculate_uncertainty(f, delta_v[k], v, sig2_delta_v[k]);
         }
-        /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
-        sig2_delta_den1 = 1.0;
-        for (i = 0; i < C; ++i)
+        else
         {
-            sig2_delta_den1 -= sig2_delta_c[i];
-            sig2_delta_den2[i] = n * f[i] + inv_v;
-        }
-        /* compute the different terms in the numerator : remove the \tilde{c} terms */
-        for (i = 0; i < C; i++)
-        {
-            sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
-        }
-        /* compute sig2_delta */
-        for (i = 0; i < C; ++i)
-        {
-            sig2_delta_v[k][i] = sig2_delta_num[i] / (sig2_delta_den1 * sig2_delta_den2[i]);
-        }
-
-        // fix computation of asymmetric sig2_delta for zero count
-        for (i = 0; i < C; ++i)
-        {
-            if (n_c[i] <= 0.5)
-            {
-                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i], v, n, f[i]);
-            }
+            fractions_v[k].assign(f, f + C);
         }
     } // end v bins loop
 
@@ -646,10 +661,8 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         {
             delta[i] = delta_v[vindex][i];
         }
-        for (i = 0; i < C; i++)
-        {
-            var_delta[i] = sig2_delta_v[vindex][i];
-        }
+        calculate_uncertainty(fractions_v[vindex].data(), delta_v[vindex],
+                              var_gene, var_delta.data());
     }
 
     delete[] f;

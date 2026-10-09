@@ -53,6 +53,11 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 * `-nbin`: (optional, expert-user-only) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 * `-no_norm`: (optional, expert-user-only) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 
+For MAP, MLE and EAP, Sanity searches the complete variance grid first and
+calculates cell uncertainties only for the selected output bin. MARG still
+calculates uncertainties at every bin because it averages over the grid.
+The variance grid, bin selection and uncertainty formulas are unchanged.
+
 ## Output
 
 * `log_transcription_quotients.txt`: This file contains the estimated values of the log-transcription quotients (LTQs) for each gene in each cell. The LTQ *x<sub>gc</sub>* of gene *g* in cell *c* corresponds to the estimated logarithm of the fraction of mRNAs in cell *c* that belong to gene *g*. The LTQs are thus normalized such that *&Sigma;<sub>g</sub> exp(x<sub>gc</sub>) = 1* for each cell *c*. In order to get an estimate of the number of mRNAs for gene *g* in cell *c* one would thus need to multiply *exp(x<sub>gc</sub>)* by the estimated total number of mRNAs *M* in the cell.
