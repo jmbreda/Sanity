@@ -128,6 +128,9 @@ This flag requires MAP inference. It selects these seven files regardless of
 Use a folder without previous numerical text output; Sanity reports an error
 if conflicting files are present. Ordinary and extended output remain text.
 
+`sanity_command.txt` records `# Output mode: bonsai` so consumers can select
+the NPY reader without another command-line option.
+
 Arrays use NPY version 1.0, little-endian values and C order. Row order matches
 `geneID.txt`; matrix columns match `cellID.txt`. Inference and uncertainty
 calculations remain double precision. Workers prepare float32 matrix rows,

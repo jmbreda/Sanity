@@ -248,7 +248,8 @@ int main(int argc, char **argv)
     static const char* vm_name[] = {"MARG", "MLE", "MAP", "EAP"};
     cmd_file << "# Method: " << vm_name[v_method] << "\n";
     if (bonsai_output_mode)
-        cmd_file << "# Output: Bonsai NPY; delta/d_delta: <f4; mu/variance: <f8; "
+        cmd_file << "# Output mode: bonsai\n"
+                    "# Output: Bonsai NPY; delta/d_delta: <f4; mu/variance: <f8; "
                     "C-order genes x cells; gene vectors: genes x 1; d_delta: standard deviation\n";
     cmd_file  << argv[0];
     for (int i = 1; i < argc; ++i)
