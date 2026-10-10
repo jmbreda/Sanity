@@ -43,6 +43,7 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 	* `-mtx_cells`: (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * `-d`: (optional) Destination folder (`'path/to/output/folder'`, default: `cwd`)
 * `-n`: (optional) Number of threads (integer, default: `4`)
+* `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (plain-text MAP).
 * `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 * `-v_m`: (optional, expert-user-only) Choose the method to estimate gene-variances $v_g$. In the MAP, EAP, MLE-options, one value for $v_g$ is fixed, and the corresponding gene expression estimates are returned, in the MARG-option, the gene expression estimates are obtained by marginalizing $v_g$. The options are:
     * MAP (**default**): Use the maximum a posteriori estimate for $v_g$.
@@ -52,6 +53,25 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 * `-vmin/-vmax`: (optional, expert-user-only) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
 * `-nbin`: (optional, expert-user-only) Number of bins for the variance in log transcription quotients (integer, default: `160`)
 * `-no_norm`: (optional, expert-user-only) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
+
+For MAP, MLE and EAP, Sanity searches the complete variance grid first and
+calculates cell uncertainties only for the selected output bin. MARG still
+calculates uncertainties at every bin because it averages over the grid.
+The variance grid, bin selection and uncertainty formulas are unchanged.
+
+Text output uses fixed six-decimal formatting. Each inference worker formats
+one gene row, and complete rows are written in gene order. Formatting uses the
+same `-n` worker count as inference; there is no separate writer thread setting.
+The number of formatted rows held in memory is bounded by the worker count.
+
+For zero-count cells, uncertainty is calculated from the positive displacement
+`e` at which `e*(2*delta+e)/(2*v) + n*log(1+f*(exp(e)-1)) = 0.5`.
+Here `n` is the total count for the gene and `f` its fitted fraction for the cell.
+Sanity evaluates the full logarithm with `log1p` and `expm1`, with an overflow-safe
+form for large displacements. The likelihood-drop tolerance remains `1e-7`.
+This changes zero-count uncertainty relative to the previous logarithm
+linearization; it retains the existing Gaussian uncertainty model and does not
+change the fitted means, likelihood grid or selected gene variance.
 
 ## Output
 
@@ -88,6 +108,28 @@ The MTX file can be compressed with gzip (with `.gz` extension).
   | Gene 2 | 0.0006 | 0.0051 | 0.0031 | ... |
   | ... | ... | ... | ... | ... |
   
+## Bonsai output mode (optional)
+
+Use `--bonsai-output-mode` to write only:
+
+- `delta.txt` and `d_delta.txt`: gene-by-cell deviations and their **standard
+  deviations**, in the same headerless matrix format as extended output.
+- `mu.txt` and `variance.txt`: one baseline mean and one prior variance per gene.
+- `geneID.txt`, `cellID.txt` and `sanity_command.txt`: identifiers and version,
+  method and command metadata.
+
+```bash
+./bin/Sanity -f counts.tsv -d bonsai_output -n 12 --bonsai-output-mode
+```
+
+This flag requires MAP inference and plain-text output. It selects these seven
+files regardless of `-e`; it cannot be combined with gzip or NPY output flags.
+Use an output folder without previous LTQ, LTQ-error, d_mu or likelihood files;
+Sanity reports an error if any of those files are already present.
+The retained files have the same numerical values, precision and ordering as
+full extended output. Formatting of omitted fields is skipped, while inference
+and the uncertainty calculations needed for `d_delta.txt` are unchanged.
+
 ## Usage
 ```
   ./Sanity <option(s)>
@@ -99,6 +141,7 @@ The MTX file can be compressed with gzip (with `.gz` extension).
     -mtx_cells, --mtx_cell_name_file    Specify the cell name text file (only needed if .mtx input file)
     -d, --destination                   Specify the destination path (default: pwd)
     -n, --n_threads                     Specify the number of threads to be used (default: 4)
+    --bonsai-output-mode               Write only the four numerical files and IDs/metadata required by Bonsai (plain-text MAP)
     -e, --extended_output               Option to print extended output (default: false, choice: false,0,true,1)
     -v_m, --v_method                    Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
     -vmin, --variance_min               Minimal value of variance in log transcription quotient (default: 0.001)
@@ -108,6 +151,10 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 ```
 
 ## Installation
+
+Text formatting requires floating-point `std::to_chars` support in the C++17
+standard library.
+
 * Clone the GitHub repository
 ```
 git clone https://github.com/jmbreda/Sanity.git

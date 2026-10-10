@@ -1,4 +1,6 @@
 #include <cctype>
+#include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <cstring>
 #include <iostream>
@@ -10,6 +12,7 @@
 #include <chrono>
 #include <sstream>
 #include <memory>
+#include <exception>
 #include <cerrno>
 #include <cstdlib>
 #include <sys/stat.h> // For mkdir on Unix-like systems
@@ -25,6 +28,7 @@
 #include "FitFrac.h"
 #include "Digamma_Trigamma.h"
 #include "Writer.hpp"
+#include "FormatOutput.hpp"
 #include "npy_writer.hpp"
 #include "Version.h"
 
@@ -49,7 +53,7 @@ struct RowComputation
 /***Function declarations ****/
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method);
 double get_epsilon_2(double d, double v, double n, double f);
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
 std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
@@ -87,9 +91,10 @@ int main(int argc, char **argv)
     int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
     bool gzip_output = false;
     bool npy_output = false;
+    bool bonsai_output_mode = false;
     std::string out_suffix = "";
 
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output);
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output, bonsai_output_mode);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -207,6 +212,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (bonsai_output_mode)
+    {
+        for (const char* filename : {"log_transcription_quotients.txt", "ltq_error_bars.txt",
+                                    "d_mu.txt", "likelihood.txt"})
+        {
+            struct stat previous;
+            if (stat((out_folder + filename).c_str(), &previous) == 0)
+            {
+                logging_debug("Bonsai output mode requires a folder without existing full-output files: " + out_folder);
+                return 1;
+            }
+        }
+    }
+
     // save version and command with parameters to a file
     std::ofstream cmd_file(out_folder + "sanity_command.txt", std::ios::trunc);
     std::time_t now = std::time(NULL);
@@ -264,21 +283,24 @@ int main(int argc, char **argv)
     else {
         if (gzip_output) {out_suffix = ".gz";}
 
-        out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
-        out_exp_lev << std::fixed << std::setprecision(6);
-
-        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
-        out_d_exp_lev << std::fixed << std::setprecision(6);
-
-        out_exp_lev << "GeneID";
-        out_d_exp_lev << "GeneID";
-        for (int c = 0; c < C; c++)
+        if (!bonsai_output_mode)
         {
-            out_exp_lev << "\t" << cell_names[c].c_str();
-            out_d_exp_lev << "\t" << cell_names[c].c_str();
+            out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
+            out_exp_lev << std::fixed << std::setprecision(6);
+
+            out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
+            out_d_exp_lev << std::fixed << std::setprecision(6);
+
+            out_exp_lev << "GeneID";
+            out_d_exp_lev << "GeneID";
+            for (int c = 0; c < C; c++)
+            {
+                out_exp_lev << "\t" << cell_names[c].c_str();
+                out_d_exp_lev << "\t" << cell_names[c].c_str();
+            }
+            out_exp_lev << "\n";
+            out_d_exp_lev << "\n";
         }
-        out_exp_lev << "\n";
-        out_d_exp_lev << "\n";
         if (print_extended_output)
         {
 
@@ -287,8 +309,11 @@ int main(int argc, char **argv)
             out_mu.open(out_folder + "mu.txt" + out_suffix);
             out_mu << std::fixed << std::setprecision(6);
 
-            out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
-            out_dmu << std::fixed << std::setprecision(6);
+            if (!bonsai_output_mode)
+            {
+                out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
+                out_dmu << std::fixed << std::setprecision(6);
+            }
 
             out_var_gene.open(out_folder + "variance.txt" + out_suffix);
             out_var_gene << std::fixed << std::setprecision(6);
@@ -299,15 +324,19 @@ int main(int argc, char **argv)
             out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
             out_ddelta << std::fixed << std::setprecision(6);
 
-            out_lik.open(out_folder + "likelihood.txt" + out_suffix);
-            out_lik << std::fixed << std::setprecision(6);
-
-            out_lik << "Variance";
-            for (int k = 0; k < (numbin); ++k)
+            if (!bonsai_output_mode)
             {
-                out_lik << "\t" << v_grid[k];
+                out_lik.open(out_folder + "likelihood.txt" + out_suffix);
+                out_lik << std::fixed << std::setprecision(6);
+
+                out_lik << "Variance";
+                for (int k = 0; k < (numbin); ++k)
+                {
+                    out_lik << "\t" << v_grid[k];
+                }
+                out_lik << "\n";
+
             }
-            out_lik << "\n";
 
             // save cell names
             for (int c = 0; c < C; c++)
@@ -317,6 +346,9 @@ int main(int argc, char **argv)
         }
     }
 
+    const auto text_output_mode = bonsai_output_mode ? sanity::TextOutputMode::Bonsai
+        : print_extended_output ? sanity::TextOutputMode::Extended : sanity::TextOutputMode::Standard;
+    std::exception_ptr output_failure;
     logging_debug("Fit gene expression levels");
     const std::clock_t begin = std::clock();
     #pragma omp parallel num_threads(N_threads)
@@ -325,8 +357,17 @@ int main(int argc, char **argv)
         #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < G; ++g)
         {
-            std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
-            RowComputation result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+            RowComputation result;
+            sanity::FormattedOutput formatted;
+            std::exception_ptr local_failure;
+            try
+            {
+                std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
+                result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+                if (!npy_output)
+                    formatted = sanity::format_output_row(result, gene_names[g], text_output_mode);
+            }
+            catch (...) { local_failure = std::current_exception(); }
             // The `ordered` clause is what makes the writes below safe: it serialises this block
             // across threads and runs it in ascending g, so the output rows stay in gene order and
             // the shared output streams are never written concurrently.
@@ -372,62 +413,51 @@ int main(int argc, char **argv)
                     logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(G));
                 }
 
-                // write output
-                if (npy_output) {
-                    out_delta_npy->write_row(result.delta);
-                    // transform var_delta to standard deviation before writing to file
-                    for (double &v : result.var_delta) {
-                        v = std::sqrt(v);
-                    }
-                    out_ddelta_npy->write_row(result.var_delta);
-                    out_mu_npy->write_row(&result.mu, 1);
-                    out_var_gene_npy->write_row(&result.var_gene, 1);
-                }
-                else {
-                    out_exp_lev << gene_names[g];
-                    out_d_exp_lev << gene_names[g];
-                    for (int c = 0; c < C; c++)
+                if (local_failure && !output_failure) output_failure = local_failure;
+                if (!output_failure)
+                {
+                    try
                     {
-                        out_exp_lev << "\t" << result.mu + result.delta[c];
-                        out_d_exp_lev << "\t" << std::sqrt(result.var_mu + result.var_delta[c]);
-                        if (print_extended_output)
+                        // write output
+                        if (npy_output) {
+                            out_delta_npy->write_row(result.delta);
+                            // transform var_delta to standard deviation before writing to file
+                            for (double &v : result.var_delta) {
+                                v = std::sqrt(v);
+                            }
+                            out_ddelta_npy->write_row(result.var_delta);
+                            out_mu_npy->write_row(&result.mu, 1);
+                            out_var_gene_npy->write_row(&result.var_gene, 1);
+                        }
+                        else
                         {
-                            out_delta << result.delta[c];
-                            out_ddelta << std::sqrt(result.var_delta[c]);
-                            if (c < C - 1)
+                            if (!bonsai_output_mode)
                             {
-                                out_delta << "\t";
-                                out_ddelta << "\t";
+                                out_exp_lev.write_raw(formatted.ltq);
+                                out_d_exp_lev.write_raw(formatted.ltq_error);
+                            }
+                            if (print_extended_output)
+                            {
+                                out_delta.write_raw(formatted.delta);
+                                out_ddelta.write_raw(formatted.delta_error);
+                                out_mu.write_raw(formatted.mu);
+                                out_var_gene.write_raw(formatted.variance);
+                                if (!bonsai_output_mode)
+                                {
+                                    out_dmu.write_raw(formatted.mu_error);
+                                    out_lik.write_raw(formatted.likelihood);
+                                }
+                                out_gene.write_raw(gene_names[g] + "\n");
                             }
                         }
                     }
-                    out_exp_lev << "\n";
-                    out_d_exp_lev << "\n";
-
-                    if (print_extended_output)
-                    {
-                        out_delta << "\n";
-                        out_ddelta << "\n";
-                        // Write gene names
-                        out_gene << gene_names[g].c_str() << "\n";
-                        // print best fit to file : mu, delta
-                        //  Print diagonal of invM : variance of mu, delta
-                        out_mu << result.mu << "\n";
-                        out_dmu << std::sqrt(result.var_mu) << "\n";
-                        out_var_gene << result.var_gene << "\n";
-                        // Write likelihood
-                        out_lik << gene_names[g];
-                        for (int k = 0; k < numbin; ++k)
-                        {
-                            out_lik << "\t" << result.lik[k];
-                        }
-                        out_lik << "\n";
-                    }
+                    catch (...) { output_failure = std::current_exception(); }
                 }
             }
         }
     }
 
+    if (output_failure) std::rethrow_exception(output_failure);
     logging_debug("Finished fitting all genes");
 
     return 0;
@@ -443,11 +473,14 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     // C = number of cells
     // numbin = number of bins for v
     int i, k;
-    double beta, L, ldet, q, delsq, inv_v;
+    double beta, L, ldet, q, delsq;
     double prev_q = 0.0;
     double *f = new double[C];
     double **delta_v = new double *[numbin];
-    double **sig2_delta_v = new double *[numbin];
+    double **sig2_delta_v = new double *[numbin]();
+    // Marginalization needs uncertainty at every bin. Fixed-bin methods only
+    // need the fitted fractions until their output bin has been selected.
+    std::vector<std::vector<double>> fractions_v(v_method > 0 ? numbin : 0);
     std::vector<double> lik(numbin, -1.0);
     std::vector<double> delta(C, 0.0), var_delta(C, 0.0);
     double var_mu, var_gene;
@@ -455,7 +488,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     for (k = 0; k < numbin; ++k)
     {
         delta_v[k] = new double[C];
-        sig2_delta_v[k] = new double[C];
+        if (v_method == 0) sig2_delta_v[k] = new double[C];
     }
 
     /*** To compute var of delta ***/
@@ -468,6 +501,42 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     double Lmax = -1e+100;
     int Lmax_ind = 0;
     double v;
+
+    auto calculate_uncertainty = [&](const double* fractions, const double* bin_delta,
+                                     double variance, double* output) {
+        /* compute nf^2/(nf+1/sigma^2) for each c */
+        const double inv_v = 1.0 / variance;
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_c[i] = n * fractions[i] * fractions[i] / (n * fractions[i] + inv_v);
+        }
+        /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
+        sig2_delta_den1 = 1.0;
+        for (i = 0; i < C; ++i)
+        {
+            sig2_delta_den1 -= sig2_delta_c[i];
+            sig2_delta_den2[i] = n * fractions[i] + inv_v;
+        }
+        /* compute the different terms in the numerator : remove the \tilde{c} terms */
+        for (i = 0; i < C; i++)
+        {
+            sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
+        }
+        /* compute sig2_delta */
+        for (i = 0; i < C; ++i)
+        {
+            output[i] = sig2_delta_num[i] / (sig2_delta_den1 * sig2_delta_den2[i]);
+        }
+
+        // fix computation of asymmetric sig2_delta for zero count
+        for (i = 0; i < C; ++i)
+        {
+            if (n_c[i] <= 0.5)
+            {
+                output[i] = get_epsilon_2(bin_delta[i], variance, n, fractions[i]);
+            }
+        }
+    };
 
     for (k = 0; k < numbin; ++k)
     {
@@ -509,37 +578,13 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
             Lmax_ind = k;
         }
 
-        /* compute nf^2/(nf+1/sigma^2) for each c */
-        inv_v = 1.0 / v;
-        for (i = 0; i < C; ++i)
+        if (v_method == 0)
         {
-            sig2_delta_c[i] = n * f[i] * f[i] / (n * f[i] + inv_v);
+            calculate_uncertainty(f, delta_v[k], v, sig2_delta_v[k]);
         }
-        /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
-        sig2_delta_den1 = 1.0;
-        for (i = 0; i < C; ++i)
+        else
         {
-            sig2_delta_den1 -= sig2_delta_c[i];
-            sig2_delta_den2[i] = n * f[i] + inv_v;
-        }
-        /* compute the different terms in the numerator : remove the \tilde{c} terms */
-        for (i = 0; i < C; i++)
-        {
-            sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
-        }
-        /* compute sig2_delta */
-        for (i = 0; i < C; ++i)
-        {
-            sig2_delta_v[k][i] = sig2_delta_num[i] / (sig2_delta_den1 * sig2_delta_den2[i]);
-        }
-
-        // fix computation of asymmetric sig2_delta for zero count
-        for (i = 0; i < C; ++i)
-        {
-            if (n_c[i] <= 0.5)
-            {
-                sig2_delta_v[k][i] = get_epsilon_2(delta_v[k][i], v, n, f[i]);
-            }
+            fractions_v[k].assign(f, f + C);
         }
     } // end v bins loop
 
@@ -646,10 +691,8 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         {
             delta[i] = delta_v[vindex][i];
         }
-        for (i = 0; i < C; i++)
-        {
-            var_delta[i] = sig2_delta_v[vindex][i];
-        }
+        calculate_uncertainty(fractions_v[vindex].data(), delta_v[vindex],
+                              var_gene, var_delta.data());
     }
 
     delete[] f;
@@ -678,35 +721,33 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
 
 double get_epsilon_2(double d, double v, double n, double f)
 {
-
-    double e;
-    double dL;
-    double e_low = 0.0;
-    double e_high = 0.0;
-    double vnf = v * n * f;
-    e_high = (-(d + vnf) + std::sqrt((d + vnf) * (d + vnf) + v * (1.0 + vnf))) / (1.0 + vnf);
-
-    // bisection method :
-    double tol = 0.0000001;
-    double diff = 1.0;
-    while (diff > tol)
+    // Find the positive displacement whose log-likelihood drop is 1/2.
+    // Keep log(1 + f*(exp(e)-1)) rather than linearizing the logarithm.
+    auto drop = [&](double e) {
+        const double logarithm = e < 700 ? std::log1p(f * std::expm1(e))
+                                        : e + std::log(f + (1 - f) * std::exp(-e));
+        return e * (2 * d + e) / (2 * v) + n * logarithm;
+    };
+    double lo = 0, hi = 1;
+    // The upper bound for the linearized formula need not bracket this root.
+    while (drop(hi) < 0.5)
     {
-        e = (e_high + e_low) / 2.0;
-        dL = e * (2.0 * d + e) / (2.0 * v) + n * f * (std::exp(e) - 1.0);
-        if (dL < 0.5)
-        {
-            e_low = e;
-        }
-        else
-        {
-            e_high = e;
-        }
-        diff = std::fabs(dL - 0.5);
+        hi *= 2;
+        if (!std::isfinite(hi)) throw std::runtime_error("Cannot bracket zero-count uncertainty");
     }
-    return e * e;
+    for (int iteration = 0; iteration < 200; ++iteration)
+    {
+        const double e = (lo + hi) / 2;
+        const double value = drop(e);
+        if (!std::isfinite(value)) throw std::runtime_error("Nonfinite zero-count likelihood");
+        if (std::fabs(value - 0.5) <= 1e-7) return e * e;
+        if (value < 0.5) lo = e; else hi = e;
+        if (hi - lo <= 1e-14 * std::max(1.0, hi)) return e * e;
+    }
+    throw std::runtime_error("Zero-count uncertainty did not converge");
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
 {
 
     // Running with no arguments at all is a usage error, not a help request: main prints the usage
@@ -754,7 +795,8 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-no_norm", "--no_cell_size_normalization"},
                              {"-v_m", "--v_method"},
                              {"-gz", "--gzip_output"},
-                             {"-npy", "--npy_output"}};
+                             {"-npy", "--npy_output"},
+                             {"--bonsai-output-mode", "--bonsai-output-mode"}};
     // Derived from the table itself so the count cannot drift from the array.
     const int N_param = sizeof(to_find) / sizeof(to_find[0]);
 
@@ -774,9 +816,9 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         }
         return -1;
     };
-    // Only the two flags at indices 11 and 12 take no argument; every other known option takes
+    // Format flags and Bonsai output mode take no argument; other known options take
     // exactly one. -h/--help and -v/--version are handled earlier and never reach here.
-    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12; };
+    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12 || option_index == 13; };
 
     int j;
     int idx;
@@ -805,6 +847,11 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 {
                     npy_output = true;
                     continue; // no argument expected for -npy
+                }
+                if (j == 13)
+                {
+                    bonsai_output_mode = true;
+                    continue;
                 }
                 idx = i;
                 if (idx + 1 > argc - 1)
@@ -911,6 +958,15 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     // writes its own fixed set of files (delta/d_delta/mu/variance .npy plus geneID.txt and
     // cellID.txt), so there is no extended output to print and no text stream to compress.
     // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
+    if (bonsai_output_mode)
+    {
+        if (gzip_output || npy_output || v_method != 2)
+        {
+            logging_debug("Bonsai output mode requires plain-text MAP output; omit gzip/NPY flags and use -v_m MAP.");
+            return ERROR;
+        }
+        print_extended_output = true;
+    }
     if(npy_output){
         gzip_output = false;
         print_extended_output = false;
@@ -961,6 +1017,7 @@ static void show_usage(void)
               << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
               << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
               << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
+              << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (plain-text MAP)\n"
               << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
