@@ -215,12 +215,15 @@ int main(int argc, char **argv)
     if (bonsai_output_mode)
     {
         for (const char* filename : {"log_transcription_quotients.txt", "ltq_error_bars.txt",
-                                    "d_mu.txt", "likelihood.txt"})
+                                    "d_mu.txt", "likelihood.txt", "delta.txt", "d_delta.txt",
+                                    "mu.txt", "variance.txt", "log_transcription_quotients.txt.gz",
+                                    "ltq_error_bars.txt.gz", "d_mu.txt.gz", "likelihood.txt.gz",
+                                    "delta.txt.gz", "d_delta.txt.gz", "mu.txt.gz", "variance.txt.gz"})
         {
             struct stat previous;
             if (stat((out_folder + filename).c_str(), &previous) == 0)
             {
-                logging_debug("Bonsai output mode requires a folder without existing full-output files: " + out_folder);
+                logging_debug("Bonsai output mode requires a folder without existing text-output files: " + out_folder);
                 return 1;
             }
         }
@@ -244,6 +247,9 @@ int main(int argc, char **argv)
 
     static const char* vm_name[] = {"MARG", "MLE", "MAP", "EAP"};
     cmd_file << "# Method: " << vm_name[v_method] << "\n";
+    if (bonsai_output_mode)
+        cmd_file << "# Output: Bonsai NPY; delta/d_delta: <f4; mu/variance: <f8; "
+                    "C-order genes x cells; gene vectors: genes x 1; d_delta: standard deviation\n";
     cmd_file  << argv[0];
     for (int i = 1; i < argc; ++i)
     {
@@ -262,8 +268,10 @@ int main(int argc, char **argv)
         out_delta, out_ddelta, out_lik, out_gene, out_cell;
 
     if (npy_output) {
-        out_delta_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy"));
-        out_ddelta_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy"));
+        out_delta_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy", C,
+            bonsai_output_mode ? npy::NpyDType::Float32 : npy::NpyDType::Float64));
+        out_ddelta_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy", C,
+            bonsai_output_mode ? npy::NpyDType::Float32 : npy::NpyDType::Float64));
         out_mu_npy.reset(new npy::NpyStreamWriter(out_folder + "mu.npy", 1));
         out_var_gene_npy.reset(new npy::NpyStreamWriter(out_folder + "variance.npy", 1));
 
@@ -283,24 +291,21 @@ int main(int argc, char **argv)
     else {
         if (gzip_output) {out_suffix = ".gz";}
 
-        if (!bonsai_output_mode)
+        out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
+        out_exp_lev << std::fixed << std::setprecision(6);
+
+        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
+        out_d_exp_lev << std::fixed << std::setprecision(6);
+
+        out_exp_lev << "GeneID";
+        out_d_exp_lev << "GeneID";
+        for (int c = 0; c < C; c++)
         {
-            out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
-            out_exp_lev << std::fixed << std::setprecision(6);
-
-            out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
-            out_d_exp_lev << std::fixed << std::setprecision(6);
-
-            out_exp_lev << "GeneID";
-            out_d_exp_lev << "GeneID";
-            for (int c = 0; c < C; c++)
-            {
-                out_exp_lev << "\t" << cell_names[c].c_str();
-                out_d_exp_lev << "\t" << cell_names[c].c_str();
-            }
-            out_exp_lev << "\n";
-            out_d_exp_lev << "\n";
+            out_exp_lev << "\t" << cell_names[c].c_str();
+            out_d_exp_lev << "\t" << cell_names[c].c_str();
         }
+        out_exp_lev << "\n";
+        out_d_exp_lev << "\n";
         if (print_extended_output)
         {
 
@@ -309,11 +314,8 @@ int main(int argc, char **argv)
             out_mu.open(out_folder + "mu.txt" + out_suffix);
             out_mu << std::fixed << std::setprecision(6);
 
-            if (!bonsai_output_mode)
-            {
-                out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
-                out_dmu << std::fixed << std::setprecision(6);
-            }
+            out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
+            out_dmu << std::fixed << std::setprecision(6);
 
             out_var_gene.open(out_folder + "variance.txt" + out_suffix);
             out_var_gene << std::fixed << std::setprecision(6);
@@ -324,19 +326,15 @@ int main(int argc, char **argv)
             out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
             out_ddelta << std::fixed << std::setprecision(6);
 
-            if (!bonsai_output_mode)
+            out_lik.open(out_folder + "likelihood.txt" + out_suffix);
+            out_lik << std::fixed << std::setprecision(6);
+
+            out_lik << "Variance";
+            for (int k = 0; k < (numbin); ++k)
             {
-                out_lik.open(out_folder + "likelihood.txt" + out_suffix);
-                out_lik << std::fixed << std::setprecision(6);
-
-                out_lik << "Variance";
-                for (int k = 0; k < (numbin); ++k)
-                {
-                    out_lik << "\t" << v_grid[k];
-                }
-                out_lik << "\n";
-
+                out_lik << "\t" << v_grid[k];
             }
+            out_lik << "\n";
 
             // save cell names
             for (int c = 0; c < C; c++)
@@ -346,8 +344,6 @@ int main(int argc, char **argv)
         }
     }
 
-    const auto text_output_mode = bonsai_output_mode ? sanity::TextOutputMode::Bonsai
-        : print_extended_output ? sanity::TextOutputMode::Extended : sanity::TextOutputMode::Standard;
     std::exception_ptr output_failure;
     logging_debug("Fit gene expression levels");
     const std::clock_t begin = std::clock();
@@ -359,13 +355,38 @@ int main(int argc, char **argv)
         {
             RowComputation result;
             sanity::FormattedOutput formatted;
+            std::vector<float> binary_delta, binary_error;
             std::exception_ptr local_failure;
             try
             {
                 std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
                 result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
                 if (!npy_output)
-                    formatted = sanity::format_output_row(result, gene_names[g], text_output_mode);
+                    formatted = sanity::format_output_row(result, gene_names[g], print_extended_output);
+                else
+                {
+                    if (!std::isfinite(result.mu) || !std::isfinite(result.var_gene))
+                        throw std::runtime_error("Nonfinite NPY gene output");
+                    if (bonsai_output_mode)
+                    {
+                        binary_delta.resize(C);
+                        binary_error.resize(C);
+                    }
+                    for (int c = 0; c < C; ++c)
+                    {
+                        const double error = std::sqrt(result.var_delta[c]);
+                        if (!std::isfinite(result.delta[c]) || !std::isfinite(error))
+                            throw std::runtime_error("Nonfinite NPY cell output");
+                        if (bonsai_output_mode)
+                        {
+                            binary_delta[c] = static_cast<float>(result.delta[c]);
+                            binary_error[c] = static_cast<float>(error);
+                            if (!std::isfinite(binary_delta[c]) || !std::isfinite(binary_error[c]))
+                                throw std::runtime_error("NPY output exceeds float32 range");
+                        }
+                        else result.var_delta[c] = error;
+                    }
+                }
             }
             catch (...) { local_failure = std::current_exception(); }
             // The `ordered` clause is what makes the writes below safe: it serialises this block
@@ -420,33 +441,31 @@ int main(int argc, char **argv)
                     {
                         // write output
                         if (npy_output) {
-                            out_delta_npy->write_row(result.delta);
-                            // transform var_delta to standard deviation before writing to file
-                            for (double &v : result.var_delta) {
-                                v = std::sqrt(v);
+                            if (bonsai_output_mode)
+                            {
+                                out_delta_npy->write_row(binary_delta);
+                                out_ddelta_npy->write_row(binary_error);
                             }
-                            out_ddelta_npy->write_row(result.var_delta);
+                            else
+                            {
+                                out_delta_npy->write_row(result.delta);
+                                out_ddelta_npy->write_row(result.var_delta);
+                            }
                             out_mu_npy->write_row(&result.mu, 1);
                             out_var_gene_npy->write_row(&result.var_gene, 1);
                         }
                         else
                         {
-                            if (!bonsai_output_mode)
-                            {
-                                out_exp_lev.write_raw(formatted.ltq);
-                                out_d_exp_lev.write_raw(formatted.ltq_error);
-                            }
+                            out_exp_lev.write_raw(formatted.ltq);
+                            out_d_exp_lev.write_raw(formatted.ltq_error);
                             if (print_extended_output)
                             {
                                 out_delta.write_raw(formatted.delta);
                                 out_ddelta.write_raw(formatted.delta_error);
                                 out_mu.write_raw(formatted.mu);
                                 out_var_gene.write_raw(formatted.variance);
-                                if (!bonsai_output_mode)
-                                {
-                                    out_dmu.write_raw(formatted.mu_error);
-                                    out_lik.write_raw(formatted.likelihood);
-                                }
+                                out_dmu.write_raw(formatted.mu_error);
+                                out_lik.write_raw(formatted.likelihood);
                                 out_gene.write_raw(gene_names[g] + "\n");
                             }
                         }
@@ -458,6 +477,11 @@ int main(int argc, char **argv)
     }
 
     if (output_failure) std::rethrow_exception(output_failure);
+    for (auto* writer : {out_delta_npy.get(), out_ddelta_npy.get(), out_mu_npy.get(), out_var_gene_npy.get()})
+        if (writer) writer->close();
+    for (auto* writer : {&out_exp_lev, &out_d_exp_lev, &out_mu, &out_dmu, &out_var_gene,
+                         &out_delta, &out_ddelta, &out_lik, &out_gene, &out_cell})
+        writer->close();
     logging_debug("Finished fitting all genes");
 
     return 0;
@@ -962,10 +986,10 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     {
         if (gzip_output || npy_output || v_method != 2)
         {
-            logging_debug("Bonsai output mode requires plain-text MAP output; omit gzip/NPY flags and use -v_m MAP.");
+            logging_debug("Bonsai output mode writes NPY and requires MAP; omit gzip/NPY flags and use -v_m MAP.");
             return ERROR;
         }
-        print_extended_output = true;
+        npy_output = true;
     }
     if(npy_output){
         gzip_output = false;
@@ -1017,7 +1041,7 @@ static void show_usage(void)
               << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
               << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
               << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
-              << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (plain-text MAP)\n"
+              << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP)\n"
               << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"

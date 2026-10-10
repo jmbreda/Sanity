@@ -43,7 +43,7 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 	* `-mtx_cells`: (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * `-d`: (optional) Destination folder (`'path/to/output/folder'`, default: `cwd`)
 * `-n`: (optional) Number of threads (integer, default: `4`)
-* `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (plain-text MAP).
+* `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (NPY, MAP).
 * `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 * `-v_m`: (optional, expert-user-only) Choose the method to estimate gene-variances $v_g$. In the MAP, EAP, MLE-options, one value for $v_g$ is fixed, and the corresponding gene expression estimates are returned, in the MARG-option, the gene expression estimates are obtained by marginalizing $v_g$. The options are:
     * MAP (**default**): Use the maximum a posteriori estimate for $v_g$.
@@ -112,23 +112,32 @@ change the fitted means, likelihood grid or selected gene variance.
 
 Use `--bonsai-output-mode` to write only:
 
-- `delta.txt` and `d_delta.txt`: gene-by-cell deviations and their **standard
-  deviations**, in the same headerless matrix format as extended output.
-- `mu.txt` and `variance.txt`: one baseline mean and one prior variance per gene.
+- `delta.npy` and `d_delta.npy`: float32 arrays of shape `(genes, cells)`,
+  containing deviations and their **standard deviations** (not variances).
+- `mu.npy` and `variance.npy`: float64 arrays of shape `(genes, 1)`, containing
+  one baseline mean and one prior variance per gene.
 - `geneID.txt`, `cellID.txt` and `sanity_command.txt`: identifiers and version,
-  method and command metadata.
+  method, output format and command metadata.
 
 ```bash
 ./bin/Sanity -f counts.tsv -d bonsai_output -n 12 --bonsai-output-mode
 ```
 
-This flag requires MAP inference and plain-text output. It selects these seven
-files regardless of `-e`; it cannot be combined with gzip or NPY output flags.
-Use an output folder without previous LTQ, LTQ-error, d_mu or likelihood files;
-Sanity reports an error if any of those files are already present.
-The retained files have the same numerical values, precision and ordering as
-full extended output. Formatting of omitted fields is skipped, while inference
-and the uncertainty calculations needed for `d_delta.txt` are unchanged.
+This flag requires MAP inference. It selects these seven files regardless of
+`-e`; it cannot be combined with gzip or the experimental NPY output flag.
+Use a folder without previous numerical text output; Sanity reports an error
+if conflicting files are present. Ordinary and extended output remain text.
+
+Arrays use NPY version 1.0, little-endian values and C order. Row order matches
+`geneID.txt`; matrix columns match `cellID.txt`. Inference and uncertainty
+calculations remain double precision. Workers prepare float32 matrix rows,
+then write them in gene order with memory bounded by the thread count. Gene
+vectors retain double precision. Unlike six-decimal text, NPY values are not
+rounded to a fixed number of decimal places.
+
+The consuming Bonsai reader must support this format; text-only readers cannot
+use these outputs. In Python, arrays can be opened without loading the whole
+matrix using `numpy.load(path, mmap_mode="r", allow_pickle=False)`.
 
 ## Usage
 ```
@@ -141,7 +150,7 @@ and the uncertainty calculations needed for `d_delta.txt` are unchanged.
     -mtx_cells, --mtx_cell_name_file    Specify the cell name text file (only needed if .mtx input file)
     -d, --destination                   Specify the destination path (default: pwd)
     -n, --n_threads                     Specify the number of threads to be used (default: 4)
-    --bonsai-output-mode               Write only the four numerical files and IDs/metadata required by Bonsai (plain-text MAP)
+    --bonsai-output-mode               Write only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP)
     -e, --extended_output               Option to print extended output (default: false, choice: false,0,true,1)
     -v_m, --v_method                    Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
     -vmin, --variance_min               Minimal value of variance in log transcription quotient (default: 0.001)

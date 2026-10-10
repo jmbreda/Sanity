@@ -1,6 +1,6 @@
 #pragma once
 
-// Self-contained NumPy ".npy" reader/writer for two-dimensional float64 arrays.
+// Self-contained NumPy reader for float64 arrays and float32/float64 writer.
 //
 // This is a standalone copy of the Bonsai port's general_utils/npy.{hpp,cpp},
 // carved out so it can be dropped into an unrelated project without pulling in
@@ -8,9 +8,8 @@
 // row-major `Matrix`, the reader, the whole-matrix writer, and -- the reason
 // this copy exists -- a streaming writer that appends rows one at a time.
 //
-// Only the little-endian, C-order, float64 (`<f8`) subset of the .npy format is
-// supported.  That is enough for numeric matrices produced on the platforms
-// this targets, and NumPy loads the result directly with `numpy.load`.
+// Writers support little-endian, C-order float32 (`<f4`) and float64 (`<f8`).
+// The reader supports float64. NumPy loads both writer dtypes directly.
 
 #include <cstddef>
 #include <cstdint>
@@ -73,6 +72,8 @@ NpyArray read_npy_float64_2d(const std::filesystem::path& path);
 /// layout that `read_npy_float64_2d` reads back and that NumPy loads directly.
 void write_npy_float64_2d(const Matrix& matrix, const std::filesystem::path& path);
 
+enum class NpyDType { Float32, Float64 };
+
 /// Streaming NumPy .npy writer: append rows one at a time.
 ///
 /// The .npy format records the array shape in a header at the very start of the
@@ -92,16 +93,21 @@ void write_npy_float64_2d(const Matrix& matrix, const std::filesystem::path& pat
 /// @endcode
 ///
 /// The number of columns may be given up front, or left as 0 and inferred from
-/// the first row.  Every subsequent row must have the same length.
+/// the first row. Every subsequent row must have the same length and match
+/// the selected dtype. Float64 is the default for existing callers.
 class NpyStreamWriter {
 public:
     /// Open `path` for writing.  If `columns` is 0 the column count is taken
     /// from the first row written.  The header is written lazily (on the first
     /// row, or on close for an empty array), so no bytes hit disk until then.
-    explicit NpyStreamWriter(const std::filesystem::path& path, std::size_t columns = 0);
+    explicit NpyStreamWriter(const std::filesystem::path& path, std::size_t columns = 0,
+                             NpyDType dtype = NpyDType::Float64);
 
     /// Append one row of exactly `columns()` values (contiguous, row-major).
     void write_row(const double* row, std::size_t length);
+
+    void write_row(const float* row, std::size_t length);
+    void write_row(const std::vector<float>& row) { write_row(row.data(), row.size()); }
 
     /// Convenience overload for a contiguous vector.
     void write_row(const std::vector<double>& row) { write_row(row.data(), row.size()); }
@@ -121,6 +127,8 @@ public:
     NpyStreamWriter& operator=(const NpyStreamWriter&) = delete;
 
 private:
+    void write_typed_row(const void* row, std::size_t length, NpyDType dtype);
+    NpyDType dtype_;
     void write_header();       ///< reserve and write the placeholder header
     void ensure_header_written(std::size_t row_length);
 
