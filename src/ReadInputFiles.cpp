@@ -1,4 +1,6 @@
 #include "ReadInputFiles.h"
+#include "FastMtxReader.hpp"
+#include <chrono>
 #include <omp.h>
 #include <atomic>
 #include <cstring>
@@ -515,7 +517,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
     n.assign(gene_totals.begin(), gene_totals.end());
 }
 
-void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int, int> &gene_idx, std::vector<RowBlock> &mtx_rows, std::vector<double> &N_c, std::vector<double> &n)
+static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C, std::map<int, int> &gene_idx, std::vector<RowBlock> &mtx_rows, std::vector<double> &N_c, std::vector<double> &n)
 {
 
     FileReader infp(in_file);
@@ -704,6 +706,50 @@ void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int,
         }
     }
     N_c.assign(cell_totals.begin(), cell_totals.end());
+}
+
+void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int, int> &gene_idx,
+                 std::vector<RowBlock> &mtx_rows, std::vector<double> &N_c, std::vector<double> &n,
+                 int N_threads)
+{
+    const auto started = std::chrono::steady_clock::now();
+    const bool gzip_input = in_file.size() >= 3 && in_file.substr(in_file.size() - 3) == ".gz";
+    bool fast_complete = false;
+    int actual_threads = 1;
+    if (!gzip_input)
+    {
+        fprintf(stdout, "Indexing MTX input with up to %d threads (bounded buffers, no index cache)\n", N_threads);
+        fflush(stdout);
+        try
+        {
+            fast_mtx::index(in_file, N_threads, N_rows, G, C, gene_idx, mtx_rows, N_c, n, actual_threads);
+            fast_complete = true;
+        }
+        catch (const fast_mtx::Unsupported &reason)
+        {
+            fprintf(stdout, "Using existing MTX reader: %s; restarting input scan\n", reason.what());
+            fflush(stdout);
+        }
+        catch (const std::exception &failure)
+        {
+            fprintf(stderr, "Error reading MTX input %s: %s\n", in_file.c_str(), failure.what());
+            exit(EXIT_FAILURE);
+        }
+    }
+    else
+    {
+        fprintf(stdout, "Using existing MTX reader: gzip input\n");
+        fflush(stdout);
+    }
+    if (!fast_complete)
+    {
+        Get_G_C_MTX_legacy(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n);
+        actual_threads = 1;
+    }
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    fprintf(stdout, "MTX indexing complete: reader=%s threads=%d genes=%d cells=%d seconds=%.6f\n",
+            fast_complete ? "fast" : "existing", actual_threads, G, C, seconds);
+    fflush(stdout);
 }
 
 std::vector<std::string> Read_CellNames(const std::string &filename)

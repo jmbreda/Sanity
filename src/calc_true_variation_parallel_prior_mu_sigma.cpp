@@ -125,7 +125,7 @@ int main(int argc, char **argv)
     logging_debug("Reading input file to get gene and cell counts");
     if (in_file_extension == "mtx")
     {
-        Get_G_C_MTX(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n);
+        Get_G_C_MTX(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n, N_threads);
         gene_names = Read_GeneNames(gene_name_file, gene_idx, G);
         if (static_cast<int>(gene_names.size()) == 0)
         {

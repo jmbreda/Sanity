@@ -42,7 +42,11 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 	* `-mtx_genes`: (optional) Gene ID file: text file with one gene ID per line. The order of gene IDs should match the order of genes in the count matrix. Examples: `genes.tsv` by cellranger 2.1.0 and `features.tsv` by cellranger 3.1.0 (10x Genomics). (`'path/to/text_file'`)
 	* `-mtx_cells`: (optional) Cell ID file: text file with one cell ID per line. The order of cell IDs should match the order of cells in the count matrix. Examples: `barcodes.tsv` by cellranger 2.1.0 and 3.1.0 (10x Genomics).  (`'path/to/text_file'`)
 * `-d`: (optional) Destination folder (`'path/to/output/folder'`, default: `cwd`)
-* `-n`: (optional) Number of threads (integer, default: `4`)
+* `-n`: (optional) Number of threads (integer, default: `4`). The same setting controls input indexing and inference.
+
+  Uncompressed, row-sorted MTX files with nonnegative integral counts are indexed in parallel using bounded input buffers; no index cache is used. Counts written as `2.0` or `2e0` also qualify.
+
+  Fractional counts, gzip input, and counts or totals outside the exact integer range of double precision use the existing serial MTX reader. If an unsupported count is encountered during parallel indexing, the input scan restarts with that reader. The indexing log reports the reader, actual thread count and elapsed time. TSV input retains its existing reader.
 * `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (NPY, MAP).
 * `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 * `-v_m`: (optional, expert-user-only) Choose the method to estimate gene-variances $v_g$. In the MAP, EAP, MLE-options, one value for $v_g$ is fixed, and the corresponding gene expression estimates are returned, in the MARG-option, the gene expression estimates are obtained by marginalizing $v_g$. The options are:
