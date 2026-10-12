@@ -42,3 +42,12 @@ Run `python3 compare_mtx_index.py` to check every index entry and total,
 partition/buffer boundaries, the thread limit, reader fallbacks and malformed
 input rejection. It compiles a small test driver using `CXX` (default `g++`),
 requires NumPy and removes its temporary files automatically.
+
+## Per-gene input rows
+
+Run `python3 compare_rows.py` to check exact counts for integer/fractional MTX,
+scientific notation, large values, duplicates, gzip, TSV, reverse reads and
+buffer boundaries. It also checks concurrent reader instances, limited thread
+teams, stale row indexes, malformed entries and truncated rows. The script
+uses NumPy, compiles a temporary driver with `CXX` (default `g++`), and removes
+its temporary files.
