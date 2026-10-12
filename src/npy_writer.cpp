@@ -89,9 +89,10 @@ void validate_float64_descr(const std::string& header) {
 
 // The Python-literal dictionary describing a C-order little-endian float64
 // matrix of the given shape, without any padding or trailing newline.
-std::string shape_dict(std::size_t rows, std::size_t columns) {
+std::string shape_dict(std::size_t rows, std::size_t columns, NpyDType dtype = NpyDType::Float64) {
     std::ostringstream dict;
-    dict << "{'descr': '<f8', 'fortran_order': False, 'shape': ("
+    dict << "{'descr': '" << (dtype == NpyDType::Float32 ? "<f4" : "<f8")
+         << "', 'fortran_order': False, 'shape': ("
          << rows << ", " << columns << "), }";
     return dict.str();
 }
@@ -214,8 +215,14 @@ void write_npy_float64_2d(const Matrix& matrix, const std::filesystem::path& pat
 
 // --- Streaming writer -------------------------------------------------------
 
-NpyStreamWriter::NpyStreamWriter(const std::filesystem::path& path, std::size_t columns)
-    : path_(path), out_(path, std::ios::binary), columns_(columns) {
+NpyStreamWriter::NpyStreamWriter(const std::filesystem::path& path, std::size_t columns, NpyDType dtype)
+    : dtype_(dtype), path_(path), out_(path, std::ios::binary), columns_(columns) {
+    static_assert(sizeof(float) == 4 && sizeof(double) == 8, "NPY requires 32/64-bit floats");
+    static_assert(std::numeric_limits<float>::is_iec559 && std::numeric_limits<double>::is_iec559,
+                  "NPY requires IEEE floating point");
+    const std::uint16_t endian_marker = 1;
+    if (*reinterpret_cast<const unsigned char*>(&endian_marker) != 1)
+        throw std::runtime_error("NPY writing requires a little-endian platform");
     if (!out_) throw std::runtime_error("Could not open .npy file for writing: " + path_.string());
 }
 
@@ -224,13 +231,13 @@ void NpyStreamWriter::write_header() {
     // field could ever need, so the final rewrite always fits without moving
     // the data block.  std::size_t's maximum has at most 20 decimal digits.
     constexpr std::size_t kMaxRowDigits = std::numeric_limits<std::size_t>::digits10 + 1;
-    std::string widest = shape_dict(0, columns_);
+    std::string widest = shape_dict(0, columns_, dtype_);
     widest.append(kMaxRowDigits, '0'); // stand in for the widest possible row count
     const std::size_t unpadded_total = kPreamble + widest.size() + 1;
     const std::size_t padding = (64 - (unpadded_total % 64)) % 64;
     header_length_ = widest.size() + padding + 1;
 
-    const std::string header = pad_header(shape_dict(rows_, columns_), header_length_);
+    const std::string header = pad_header(shape_dict(rows_, columns_, dtype_), header_length_);
     write_header_block(out_, header);
     if (!out_) throw std::runtime_error("Could not write .npy header: " + path_.string());
     header_written_ = true;
@@ -243,19 +250,30 @@ void NpyStreamWriter::ensure_header_written(std::size_t row_length) {
 }
 
 void NpyStreamWriter::write_row(const double* row, std::size_t length) {
+    write_typed_row(row, length, NpyDType::Float64);
+}
+
+void NpyStreamWriter::write_row(const float* row, std::size_t length) {
+    write_typed_row(row, length, NpyDType::Float32);
+}
+
+void NpyStreamWriter::write_typed_row(const void* row, std::size_t length, NpyDType dtype) {
+    if (dtype != dtype_) throw std::runtime_error("NPY row type does not match the file dtype");
+    const std::size_t item_size = dtype_ == NpyDType::Float32 ? sizeof(float) : sizeof(double);
+    if (length > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max()) / item_size)
+        throw std::runtime_error("NPY row is too large");
     if (closed_) throw std::runtime_error("Cannot write to a closed .npy stream: " + path_.string());
     ensure_header_written(length);
     if (length != columns_) {
         throw std::runtime_error("Row length does not match the .npy column count");
     }
-    out_.write(reinterpret_cast<const char*>(row), static_cast<std::streamsize>(length * sizeof(double)));
+    out_.write(reinterpret_cast<const char*>(row), static_cast<std::streamsize>(length * item_size));
     if (!out_) throw std::runtime_error("Could not write .npy row: " + path_.string());
     ++rows_;
 }
 
 void NpyStreamWriter::close() {
     if (closed_) return;
-    closed_ = true;
 
     // An empty stream still needs a valid (0, columns) header on disk.
     if (!header_written_) write_header();
@@ -265,10 +283,13 @@ void NpyStreamWriter::close() {
     // the dictionary text (the row count) differs.
     out_.seekp(static_cast<std::streamoff>(kPreamble));
     if (!out_) throw std::runtime_error("Could not seek to rewrite .npy header: " + path_.string());
-    const std::string header = pad_header(shape_dict(rows_, columns_), header_length_);
+    const std::string header = pad_header(shape_dict(rows_, columns_, dtype_), header_length_);
     out_.write(header.data(), static_cast<std::streamsize>(header.size()));
     out_.flush();
     if (!out_) throw std::runtime_error("Could not finalise .npy header: " + path_.string());
+    out_.close();
+    if (!out_) throw std::runtime_error("Could not close .npy file: " + path_.string());
+    closed_ = true;
 }
 
 NpyStreamWriter::~NpyStreamWriter() {

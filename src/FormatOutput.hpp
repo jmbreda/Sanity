@@ -10,8 +10,6 @@
 namespace sanity
 {
 
-enum class TextOutputMode { Standard, Extended, Bonsai };
-
 struct FormattedOutput
 {
     std::string ltq, ltq_error, delta, delta_error;
@@ -32,19 +30,14 @@ inline void append_fixed_number(std::string& output, double value)
 // ordered write section. Each worker holds at most one formatted gene row.
 template <typename Row>
 FormattedOutput format_output_row(const Row& result, const std::string& gene,
-                                  TextOutputMode mode)
+                                  bool extended)
 {
-    const bool extended = mode != TextOutputMode::Standard;
-    const bool bonsai = mode == TextOutputMode::Bonsai;
     FormattedOutput row;
     const std::size_t cells = result.delta.size();
-    if (!bonsai)
-    {
-        row.ltq.reserve(cells * 12 + gene.size() + 1);
-        row.ltq_error.reserve(cells * 12 + gene.size() + 1);
-        row.ltq = gene;
-        row.ltq_error = gene;
-    }
+    row.ltq.reserve(cells * 12 + gene.size() + 1);
+    row.ltq_error.reserve(cells * 12 + gene.size() + 1);
+    row.ltq = gene;
+    row.ltq_error = gene;
     if (extended)
     {
         row.delta.reserve(cells * 12 + 1);
@@ -52,13 +45,10 @@ FormattedOutput format_output_row(const Row& result, const std::string& gene,
     }
     for (std::size_t c = 0; c < cells; ++c)
     {
-        if (!bonsai)
-        {
-            row.ltq.push_back('\t');
-            append_fixed_number(row.ltq, result.mu + result.delta[c]);
-            row.ltq_error.push_back('\t');
-            append_fixed_number(row.ltq_error, std::sqrt(result.var_mu + result.var_delta[c]));
-        }
+        row.ltq.push_back('\t');
+        append_fixed_number(row.ltq, result.mu + result.delta[c]);
+        row.ltq_error.push_back('\t');
+        append_fixed_number(row.ltq_error, std::sqrt(result.var_mu + result.var_delta[c]));
         if (extended)
         {
             if (c) { row.delta.push_back('\t'); row.delta_error.push_back('\t'); }
@@ -66,24 +56,22 @@ FormattedOutput format_output_row(const Row& result, const std::string& gene,
             append_fixed_number(row.delta_error, std::sqrt(result.var_delta[c]));
         }
     }
-    if (!bonsai) { row.ltq.push_back('\n'); row.ltq_error.push_back('\n'); }
+    row.ltq.push_back('\n');
+    row.ltq_error.push_back('\n');
     if (extended)
     {
         row.delta.push_back('\n');
         row.delta_error.push_back('\n');
         append_fixed_number(row.mu, result.mu); row.mu.push_back('\n');
-        if (!bonsai) { append_fixed_number(row.mu_error, std::sqrt(result.var_mu)); row.mu_error.push_back('\n'); }
+        append_fixed_number(row.mu_error, std::sqrt(result.var_mu)); row.mu_error.push_back('\n');
         append_fixed_number(row.variance, result.var_gene); row.variance.push_back('\n');
-        if (!bonsai)
+        row.likelihood = gene;
+        for (double value : result.lik)
         {
-            row.likelihood = gene;
-            for (double value : result.lik)
-            {
-                row.likelihood.push_back('\t');
-                append_fixed_number(row.likelihood, value);
-            }
-            row.likelihood.push_back('\n');
+            row.likelihood.push_back('\t');
+            append_fixed_number(row.likelihood, value);
         }
+        row.likelihood.push_back('\n');
     }
     return row;
 }
