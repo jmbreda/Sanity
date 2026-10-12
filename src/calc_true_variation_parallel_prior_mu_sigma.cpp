@@ -507,17 +507,17 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     double prev_q = 0.0;
     double *f = new double[C];
     double **delta_v = new double *[numbin];
+    double *delta_scratch = v_method > 0 ? new double[C] : nullptr;
     double **sig2_delta_v = new double *[numbin]();
-    // Marginalization needs uncertainty at every bin. Fixed-bin methods only
-    // need the fitted fractions until their output bin has been selected.
-    std::vector<std::vector<double>> fractions_v(v_method > 0 ? numbin : 0);
+    // Fixed-bin methods retain only the fitted scalar; reconstruct cell values after selection.
+    std::vector<double> fitted_q(numbin);
     std::vector<double> lik(numbin, -1.0);
     std::vector<double> delta(C, 0.0), var_delta(C, 0.0);
     double var_mu, var_gene;
 
     for (k = 0; k < numbin; ++k)
     {
-        delta_v[k] = new double[C];
+        delta_v[k] = v_method == 0 ? new double[C] : delta_scratch;
         if (v_method == 0) sig2_delta_v[k] = new double[C];
     }
 
@@ -574,6 +574,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         beta = 1.0 / (n * v);
         q = fitfrac(f, n_c, n, v, C, N_c, prev_q);
         prev_q = q;
+        fitted_q[k] = q;
         mu_v[k] = Psi_0(n) - q; /*** equation (85) ***/
 
         delsq = 0;
@@ -611,10 +612,6 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         if (v_method == 0)
         {
             calculate_uncertainty(f, delta_v[k], v, sig2_delta_v[k]);
-        }
-        else
-        {
-            fractions_v[k].assign(f, f + C);
         }
     } // end v bins loop
 
@@ -717,20 +714,21 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         // And then also the corresponding values for the LTQs etc.
         mu = mu_v[vindex];
         var_mu = Psi_1((double)n);
+        fractions_at_q(f, n_c, n, var_gene, C, N_c, fitted_q[vindex]);
         for (i = 0; i < C; i++)
         {
-            delta[i] = delta_v[vindex][i];
+            delta[i] = std::log(f[i]) - std::log(N_c[i]) + fitted_q[vindex];
         }
-        calculate_uncertainty(fractions_v[vindex].data(), delta_v[vindex],
-                              var_gene, var_delta.data());
+        calculate_uncertainty(f, delta.data(), var_gene, var_delta.data());
     }
 
     delete[] f;
     for (k = 0; k < numbin; ++k)
     {
-        delete[] delta_v[k];
+        if (v_method == 0) delete[] delta_v[k];
         delete[] sig2_delta_v[k];
     }
+    delete[] delta_scratch;
     delete[] delta_v;
     delete[] sig2_delta_v;
     delete[] sig2_delta_c;

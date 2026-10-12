@@ -150,3 +150,16 @@ double LambertW0_approximation(const double& x) {
 
     return W;
 }
+
+// Reconstruct fractions at the saved fitted root without repeating the root search.
+void fractions_at_q(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double q) {
+    const double beta = n * v;
+    const double inv_beta = 1.0 / beta;
+    const double logbeta = std::log(beta);
+    for (int i = 0; i < C; ++i) {
+        const double Q = std::log(N_c[i]) + n_c[i] * v + logbeta;
+        const double x = Q - q;
+        const double W = x > 50 ? LambertW0_approximation(x) : Fukushima::LambertW(0, std::exp(x));
+        f[i] = W * inv_beta;
+    }
+}

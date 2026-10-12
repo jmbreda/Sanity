@@ -61,7 +61,10 @@ The MTX file can be compressed with gzip (with `.gz` extension).
 * `-no_norm`: (optional, expert-user-only) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 
 For MAP, MLE and EAP, Sanity searches the complete variance grid first and
-calculates cell uncertainties only for the selected output bin. MARG still
+calculates cell uncertainties only for the selected output bin. It retains
+compact fitting results for each bin and reconstructs the selected bin’s cell
+fractions and expression estimates, instead of storing cell-sized arrays for
+every bin. MARG still
 calculates uncertainties at every bin because it averages over the grid.
 The variance grid, bin selection and uncertainty formulas are unchanged.
 
