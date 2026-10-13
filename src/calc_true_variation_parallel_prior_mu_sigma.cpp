@@ -52,7 +52,7 @@ struct RowComputation
 };
 
 /***Function declarations ****/
-RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method);
+RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method, const std::vector<double>& log_N_c, double library_total, std::vector<double>& fitting_workspace);
 double get_epsilon_2(double d, double v, double n, double f);
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
@@ -178,6 +178,14 @@ int main(int argc, char **argv)
         {
             N_c[c] = mean_N_c;
         }
+    }
+
+    // Cache library constants after optional normalisation, preserving the sum order.
+    std::vector<double> log_N_c(C);
+    double library_total = 0;
+    for (int c = 0; c < C; ++c) {
+        log_N_c[c] = std::log(N_c[c]);
+        library_total += N_c[c];
     }
 
     // Grid of candidate gene variances, computed once here and shared with
@@ -351,7 +359,7 @@ int main(int argc, char **argv)
     #pragma omp parallel num_threads(N_threads)
     {
         std::unique_ptr<sanity::DenseRowReader> thread_reader;
-        std::vector<double> n_c_g;
+        std::vector<double> n_c_g, fitting_workspace(C);
         #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < G; ++g)
         {
@@ -366,7 +374,7 @@ int main(int argc, char **argv)
                     n_c_g.resize(C);
                 }
                 thread_reader->read_into(g, n_c_g.data());
-                result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
+                result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method, log_N_c, library_total, fitting_workspace);
                 if (!npy_output)
                     formatted = sanity::format_output_row(result, gene_names[g], print_extended_output);
                 else
@@ -495,7 +503,8 @@ int main(int argc, char **argv)
 
 RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c,
                                          double n, const std::vector<double> &v_grid, int C, int numbin,
-                                         int v_method)
+                                         int v_method, const std::vector<double>& log_N_c,
+                                         double library_total, std::vector<double>& fitting_workspace)
 {
     // n = total counts for the gene
     // n_c = counts for the gene in each cell
@@ -568,20 +577,21 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         }
     };
 
+    const double psi0 = Psi_0(n), psi1 = Psi_1(n);
     for (k = 0; k < numbin; ++k)
     {
         v = v_grid[k];
         beta = 1.0 / (n * v);
-        q = fitfrac(f, n_c, n, v, C, N_c, prev_q);
+        q = fitfrac(f, n_c, n, v, C, N_c, prev_q, log_N_c.data(), library_total, fitting_workspace.data());
         prev_q = q;
         fitted_q[k] = q;
-        mu_v[k] = Psi_0(n) - q; /*** equation (85) ***/
+        mu_v[k] = psi0 - q; /*** equation (85) ***/
 
         delsq = 0;
         L = -0.5 * ((double)C) * std::log(v); // (56) 1st term
         for (i = 0; i < C; ++i)
         {
-            delta_v[k][i] = std::log(f[i]) - std::log(N_c[i]) + q; // equation (67)
+            delta_v[k][i] = std::log(f[i]) - log_N_c[i] + q; // equation (67)
             L += n_c[i] * delta_v[k][i];                 // data term sum_c n_c*delta_c, as in Equation 19 of Sanity paper SI
             delsq += delta_v[k][i] * delta_v[k][i];
         }
@@ -672,7 +682,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
     }
 
     // Compute var_delta = < (mu - <mu>)^2 > + <d_mu>
-    var_mu = Psi_1((double)n);
+    var_mu = psi1;
     for (k = 0; k < numbin; k++)
     {
         var_mu += lik[k] * (mu_v[k] - mu) * (mu_v[k] - mu);
@@ -713,11 +723,11 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
         var_gene = v_grid[vindex];
         // And then also the corresponding values for the LTQs etc.
         mu = mu_v[vindex];
-        var_mu = Psi_1((double)n);
-        fractions_at_q(f, n_c, n, var_gene, C, N_c, fitted_q[vindex]);
+        var_mu = psi1;
+        fractions_at_q(f, n_c, n, var_gene, C, N_c, fitted_q[vindex], log_N_c.data());
         for (i = 0; i < C; i++)
         {
-            delta[i] = std::log(f[i]) - std::log(N_c[i]) + fitted_q[vindex];
+            delta[i] = std::log(f[i]) - log_N_c[i] + fitted_q[vindex];
         }
         calculate_uncertainty(f, delta.data(), var_gene, var_delta.data());
     }

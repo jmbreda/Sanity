@@ -5,21 +5,21 @@
 #include <cmath>
 #include <stdexcept>
 
-double fitfrac(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double prev_q) {
+double fitfrac(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double prev_q, const double* log_N_c, double library_total, double* workspace) {
     double q, W, x, dq, funcq;
     int i;
-    double *Q = new double [C];
+    double *Q = workspace ? workspace : new double [C];
     double beta = n * v;
     double inv_beta = 1.0/beta;
     double logbeta = std::log(beta);
 
     q = 0.0;
     for(i=0;i<C;++i){
-        Q[i] = std::log( N_c[i]) + n_c[i]*v + logbeta;//Q[i] = y_gc +log(nv) = log(Nc)+nc v + log(beta)
-        q += N_c[i]; //accumulate q = sum_c N_c; the log is taken after the loop
+        Q[i] = (log_N_c ? log_N_c[i] : std::log(N_c[i])) + n_c[i]*v + logbeta;//Q[i] = y_gc +log(nv) = log(Nc)+nc v + log(beta)
+        if (!log_N_c) q += N_c[i]; //accumulate q = sum_c N_c; the log is taken after the loop
     }
     //Initial guess for q is q = log(sum_c Nc))+v/2 because at optimum q = log[ sum_c Nc exp(delta_c)] and expectation of exp(delta_c) is exp(v/2)
-    q = std::log(q) + 0.5*v;
+    q = std::log(log_N_c ? library_total : q) + 0.5*v;
 
     if (prev_q != 0.0) {
         funcq = fq(Q, C, beta, prev_q);
@@ -81,7 +81,7 @@ double fitfrac(double *f, const std::vector<double>& n_c, double n, double v, in
         std::cerr << "fitfrac: WARNING: dq = " << dq << " is not close to zero at final q = " << q
             << " funcq = " << funcq << std::endl;
     }
-  delete[] Q;
+  if (!workspace) delete[] Q;
   return q;
 }
 
@@ -152,12 +152,12 @@ double LambertW0_approximation(const double& x) {
 }
 
 // Reconstruct fractions at the saved fitted root without repeating the root search.
-void fractions_at_q(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double q) {
+void fractions_at_q(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double q, const double* log_N_c) {
     const double beta = n * v;
     const double inv_beta = 1.0 / beta;
     const double logbeta = std::log(beta);
     for (int i = 0; i < C; ++i) {
-        const double Q = std::log(N_c[i]) + n_c[i] * v + logbeta;
+        const double Q = (log_N_c ? log_N_c[i] : std::log(N_c[i])) + n_c[i] * v + logbeta;
         const double x = Q - q;
         const double W = x > 50 ? LambertW0_approximation(x) : Fukushima::LambertW(0, std::exp(x));
         f[i] = W * inv_beta;

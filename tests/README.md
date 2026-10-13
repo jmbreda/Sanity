@@ -66,3 +66,6 @@ empty genes, a custom variance grid and disabled cell-size normalisation.
 Extended text, float64 arrays, Bonsai arrays and identifier order must match
 exactly. Command metadata is excluded because the executable paths differ.
 Inputs and outputs are generated in a temporary directory and removed.
+
+The inference comparison also covers cached fitting constants, including
+disabled cell-size normalization and custom variance grids.

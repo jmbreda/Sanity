@@ -67,6 +67,11 @@ fractions and expression estimates, instead of storing cell-sized arrays for
 every bin. MARG still
 calculates uncertainties at every bin because it averages over the grid.
 The variance grid, bin selection and uncertainty formulas are unchanged.
+Library-size constants are computed once after the normalization setting is
+applied, and each gene’s digamma and trigamma values are computed once. Each
+worker also reuses its fitting workspace across bins and genes. These changes
+avoid repeated calculations and allocations without changing the fitting
+algorithm or its convergence tolerance.
 
 Text output uses fixed six-decimal formatting. Each inference worker formats
 one gene row, and complete rows are written in gene order. Formatting uses the
