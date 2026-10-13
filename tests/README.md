@@ -51,3 +51,18 @@ buffer boundaries. It also checks concurrent reader instances, limited thread
 teams, stale row indexes, malformed entries and truncated rows. The script
 uses NumPy, compiles a temporary driver with `CXX` (default `g++`), and removes
 its temporary files.
+
+## Inference changes
+
+Compile the previous version separately, then run:
+
+```bash
+python3 compare_inference.py --reference /path/to/previous/bin/Sanity
+```
+
+An optional `--candidate` selects a different candidate executable. This checks
+all four variance methods on TSV and fractional MTX inputs, a broad count range,
+empty genes, a custom variance grid and disabled cell-size normalisation.
+Extended text, float64 arrays, Bonsai arrays and identifier order must match
+exactly. Command metadata is excluded because the executable paths differ.
+Inputs and outputs are generated in a temporary directory and removed.
