@@ -29,14 +29,17 @@ CFLAGS= -I. -std=c++17 -O3 $(ARCH_FLAG) -flto=auto -fopenmp -fno-math-errno
 LDFLAGS= -lz
 BINDIR := ../bin
 
-Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o | $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o $(LDFLAGS)
+Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o DenseRowReader.o | $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o DenseRowReader.o $(LDFLAGS)
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp FormatOutput.hpp npy_writer.hpp Version.h
+calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp FormatOutput.hpp npy_writer.hpp DenseRowReader.hpp Version.h
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
+
+DenseRowReader.o: DenseRowReader.cpp DenseRowReader.hpp ReadInputFiles.h
+	$(CC) $(CFLAGS) -c DenseRowReader.cpp
 
 npy_writer.o: npy_writer.cpp npy_writer.hpp
 	$(CC) $(CFLAGS) -c npy_writer.cpp

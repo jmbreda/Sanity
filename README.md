@@ -47,6 +47,8 @@ The MTX file can be compressed with gzip (with `.gz` extension).
   Uncompressed, row-sorted MTX files with nonnegative integral counts are indexed in parallel using bounded input buffers; no index cache is used. Counts written as `2.0` or `2e0` also qualify.
 
   Fractional counts, gzip input, and counts or totals outside the exact integer range of double precision use the existing serial MTX reader. If an unsupported count is encountered during parallel indexing, the input scan restarts with that reader. The indexing log reports the reader, actual thread count and elapsed time. TSV input retains its existing reader.
+  During inference, each worker reuses its count buffer. Plain MTX rows are read through a bounded buffer with direct numeric parsing; fractional counts are supported. TSV and gzip retain their existing numeric conversion.
+
 * `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (NPY, MAP).
 * `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 * `-v_m`: (optional, expert-user-only) Choose the method to estimate gene-variances $v_g$. In the MAP, EAP, MLE-options, one value for $v_g$ is fixed, and the corresponding gene expression estimates are returned, in the MARG-option, the gene expression estimates are obtained by marginalizing $v_g$. The options are:

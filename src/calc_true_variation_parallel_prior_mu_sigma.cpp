@@ -25,6 +25,7 @@
 #endif
 
 #include "ReadInputFiles.h"
+#include "DenseRowReader.hpp"
 #include "FitFrac.h"
 #include "Digamma_Trigamma.h"
 #include "Writer.hpp"
@@ -55,7 +56,6 @@ RowComputation get_gene_expression_level(const std::vector<double> &n_c, const s
 double get_epsilon_2(double d, double v, double n, double f);
 ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
-std::vector<double> fetch_row(int g, FileReader &infile, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C);
 
 // Function to print a timestamped message to stderr
 void logging_debug(const std::string &msg)
@@ -350,7 +350,8 @@ int main(int argc, char **argv)
     const std::clock_t begin = std::clock();
     #pragma omp parallel num_threads(N_threads)
     {
-        FileReader thread_reader(in_file);
+        std::unique_ptr<sanity::DenseRowReader> thread_reader;
+        std::vector<double> n_c_g;
         #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < G; ++g)
         {
@@ -360,7 +361,11 @@ int main(int argc, char **argv)
             std::exception_ptr local_failure;
             try
             {
-                std::vector<double> n_c_g = fetch_row(g, thread_reader, in_file_extension, mtx_rows, tsv_offsets, C);
+                if (!thread_reader) {
+                    thread_reader = std::make_unique<sanity::DenseRowReader>(in_file, in_file_extension, mtx_rows, tsv_offsets, C);
+                    n_c_g.resize(C);
+                }
+                thread_reader->read_into(g, n_c_g.data());
                 result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method);
                 if (!npy_output)
                     formatted = sanity::format_output_row(result, gene_names[g], print_extended_output);
@@ -1049,60 +1054,4 @@ static void show_usage(void)
               << "\t-nbin,--number_of_variance_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
               << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
               << "\t-v_m,--v_method\t\tOption to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)\n";
-}
-
-std::vector<double> fetch_row(int g, FileReader &thread_reader, const std::string &in_file_extension, const std::vector<RowBlock> &mtx_rows, const std::vector<std::streampos> &tsv_offsets, const int &C)
-{
-    std::vector<double> row_data(C, 0.0);
-    if (!thread_reader.is_open())
-    {
-        throw std::runtime_error("RowReader: cannot open input file.");
-    }
-
-    if (in_file_extension == "mtx")
-    {
-        // Fetch from Matrix Market format
-        const RowBlock &row_block = mtx_rows[g];
-        thread_reader.seekg(row_block.offset);
-        char *line = nullptr;
-        char *saveptr = nullptr;
-        char *token = nullptr;
-        for (size_t idx = 0; idx < row_block.nnz; ++idx)
-        {
-            line = thread_reader.getline();
-            token = strtok_r(line, " \t\r\n", &saveptr);
-            int g_idx = std::stoi(token) - 1; // Convert to 0-based index
-            // Guard against a stale offset silently reading another gene's counts. Compare against
-            // the row index recorded when the offset table was built, not g: g is the position in
-            // mtx_rows, which skips zero-count genes and so need not equal the mtx row index.
-            if (g_idx != row_block.row_index)
-            {
-                throw std::runtime_error("RowReader: expected gene index " + std::to_string(row_block.row_index + 1) +
-                                         " but found " + std::to_string(g_idx + 1) +
-                                         ". The input file is likely malformed or its offset table is stale.");
-            }
-            token = strtok_r(NULL, " \t\r\n", &saveptr);
-            int c_idx = std::stoi(token) - 1; // Convert to 0-based index
-            token = strtok_r(NULL, " \t\r\n", &saveptr);
-            double value = std::stod(token);
-            row_data[c_idx] = value;
-        }
-    }
-    else
-    {
-        // Fetch from TSV format
-        thread_reader.seekg(tsv_offsets[g]);
-        char *line = nullptr;
-        char *saveptr = nullptr;
-        char *token = nullptr;
-        line = thread_reader.getline();
-        token = strtok_r(line, "\t\r\n", &saveptr); // skip gene name
-        for (int c = 0; c < C; ++c)
-        {
-            token = strtok_r(NULL, "\t\r\n", &saveptr);
-            row_data[c] = std::stod(token);
-        }
-    }
-
-    return row_data;
 }
