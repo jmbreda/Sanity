@@ -66,7 +66,8 @@ void Get_G_C_MTX(std::string in_file,
                  std::map<int, int> &gene_idx,
                  std::vector<RowBlock> &mtx_rows,
                  std::vector<double> &N_c,
-                 std::vector<double> &n);
+                 std::vector<double> &n,
+                 int N_threads = 4);
 
 std::vector<std::string> Read_CellNames(const std::string &filename);
 

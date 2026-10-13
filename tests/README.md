@@ -29,3 +29,16 @@ Python script `compare.py` requires the `numpy` library (`pip3 install numpy` if
     Details on differences are saved in `compare.log`, which is truncated at the start of each run and covers all four methods. It is not tracked in git.
 
 Note: `compare.py` exits with code 0 if every method passed, and 1 if any method FAILED, so it can be used in a script or CI. A method whose results differ but are within the `numpy.isclose` tolerances is reported as "PASSED with acceptable differences" and counts as a pass.
+
+## Matrix Market reader
+
+After compiling, run `python3 compare_mtx.py`. It compares complete Bonsai NPY
+outputs and identifier order against TSV input using the default thread setting
+and `-n 1`, `-n 2`, and `-n 12`. It covers the parallel integral-count path,
+fractional counts, gzip input, and removal of an empty gene. Temporary inputs
+and outputs are removed automatically.
+
+Run `python3 compare_mtx_index.py` to check every index entry and total,
+partition/buffer boundaries, the thread limit, reader fallbacks and malformed
+input rejection. It compiles a small test driver using `CXX` (default `g++`),
+requires NumPy and removes its temporary files automatically.

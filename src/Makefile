@@ -41,7 +41,7 @@ calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prio
 npy_writer.o: npy_writer.cpp npy_writer.hpp
 	$(CC) $(CFLAGS) -c npy_writer.cpp
 
-ReadInputFiles.o: ReadInputFiles.cpp ReadInputFiles.h
+ReadInputFiles.o: ReadInputFiles.cpp ReadInputFiles.h FastMtxReader.hpp
 	$(CC) $(CFLAGS) -c ReadInputFiles.cpp
 
 FitFrac.o: FitFrac.cpp FitFrac.h FukushimaLambertW.h
