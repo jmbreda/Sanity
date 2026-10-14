@@ -11,19 +11,23 @@
 
 using namespace std;
 
+// "SI" in the comments is the Supplementary Information of Breda, Zavolan & van Nimwegen, Nat. Biotechnol. 2021 (Section S1.3).
+// Index letters at the end of a name give what an array runs over: g = genes, c = cells, a = grid points of alpha.
+// Two letters mean a matrix stored in that order, so log_fold_change_cg is indexed [cell][gene].
+
 // Distances functions :
 // with error bars:
-void get_distance_errorbar(double **delta, double **epsilon2, double *variance, double **D, int N_gene, int N_cell, int N_threads);
-void get_Di_errorbar(double **delta, double **epsilon2, double **alpha_v, double *D, int N_gene, int N_cell, int i, int N_bin);
+void get_distance_errorbar(double **log_fold_change_cg, double **log_fold_change_error_sq_cg, double *gene_variance_g, double **distance_cc, int num_genes, int num_cells, int num_threads);
+void distance_row_errorbar(double **unshrunk_log_fold_change_cg, double **unshrunk_log_fold_change_error_sq_cg, double **alpha_times_variance_ga, double *distance_row_c, int num_genes, int num_cells, int i, int num_alpha_bins);
 // without errorbars:
-void get_distance_euclidean(double **delta, double **D, int N_gene, int N_cell, int N_threads);
-void get_Di_euclidean(double **delta, double *D, int N_gene, int N_cell, int i);
+void get_distance_euclidean(double **log_fold_change_cg, double **distance_cc, int num_genes, int num_cells, int num_threads);
+void distance_row_euclidean(double **log_fold_change_cg, double *distance_row_c, int num_genes, int num_cells, int i);
 
 // I/O
-void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff, bool &with_error_bar, int &N_threads, int &N_gene, int &N_cell);
+void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff, bool &with_error_bar, int &num_threads, int &num_genes, int &num_cells);
 static void show_usage(void);
-void load_matrix(string sanity_folder, double **delta, double **epsilon2, double *variance, int N_gene, int N_cell, bool with_error_bar);
-void print_distance(string out_file, double **D, int N_cell);
+void load_matrix(string sanity_folder, double **log_fold_change_cg, double **log_fold_change_error_sq_cg, double *gene_variance_g, int num_genes, int num_cells, bool with_error_bar);
+void print_distance(string out_file, double **distance_cc, int num_cells);
 
 int main(int argc, char** argv){
 
@@ -32,10 +36,10 @@ int main(int argc, char** argv){
 	string sanity_folder("");
 	double s2n_cutoff = 1.0;
 	bool with_error_bar(true);
-	int N_threads(4);
-	int N_gene(0);
-	int N_cell(0);
-	parse_argv(argc, argv, sanity_folder, s2n_cutoff, with_error_bar, N_threads, N_gene, N_cell);
+	int num_threads(4);
+	int num_genes(0);
+	int num_cells(0);
+	parse_argv(argc, argv, sanity_folder, s2n_cutoff, with_error_bar, num_threads, num_genes, num_cells);
 
 	cout << "Sanity folder :\n\t" << sanity_folder << "\n";
 	cout << "Signal/noise cut-off :" << s2n_cutoff << "\n";
@@ -44,128 +48,128 @@ int main(int argc, char** argv){
 	else
 		cout << "Without error bars";
 	cout << "\n";
-	cout << "Nr. of gene :" << N_gene << "\n";
-	cout << "Nr. of cell :" << N_cell << "\n";
-	cout << "Using " << N_threads << " cpus\n";
+	cout << "Nr. of gene :" << num_genes << "\n";
+	cout << "Nr. of cell :" << num_cells << "\n";
+	cout << "Using " << num_threads << " cpus\n";
 
 
 	// Declare temporary variables
 	int g, c;
-	double **delta_all = new double *[N_cell];
-	for(c=0;c<N_cell;c++)
-		delta_all[c] = new double[N_gene];
+	double **log_fold_change_all_cg = new double *[num_cells]; // <delta_gc> (SI Eq. 39), indexed [cell][gene], read from delta.txt; before the signal-to-noise filter.
+	for(c=0;c<num_cells;c++)
+		log_fold_change_all_cg[c] = new double[num_genes];
 
-	double **epsilon2_all = new double *[N_cell];
-	for(c=0;c<N_cell;c++)
-		epsilon2_all[c] = new double[N_gene];
+	double **log_fold_change_error_sq_all_cg = new double *[num_cells]; // epsilon_gc^2 (SI Eq. 42), indexed [cell][gene], from the error bars in d_delta.txt.
+	for(c=0;c<num_cells;c++)
+		log_fold_change_error_sq_all_cg[c] = new double[num_genes];
 	
-	double *variance_all = new double [N_gene];
+	double *gene_variance_all_g = new double [num_genes]; // v_g (SI Eq. 17), read from variance.txt.
 
 	// Get data
 	cout << "Get data... ";
-	load_matrix(sanity_folder, delta_all, epsilon2_all, variance_all, N_gene, N_cell, with_error_bar);	
+	load_matrix(sanity_folder, log_fold_change_all_cg, log_fold_change_error_sq_all_cg, gene_variance_all_g, num_genes, num_cells, with_error_bar);	
 
 	// Compute signal 2 noise
-	bool idx_gene[N_gene];
-	int N_gene_cutoff(0);
+	bool keep_gene_g[num_genes]; // True for the genes whose signal-to-noise reaches the cut-off.
+	int num_genes_kept(0);
 	if (s2n_cutoff > 0.0){
 	
-		double mean_delta;
-		double var_delta;
-		double mean_epsilon2;
-		for(g=0;g<N_gene;g++){
+		double mean_log_fold_change; // Mean of <delta_gc> over the cells.
+		double log_fold_change_sample_var; // Sample variance of <delta_gc> over the cells.
+		double mean_log_fold_change_error_sq; // Mean of epsilon_gc^2 over the cells.
+		for(g=0;g<num_genes;g++){
 			
-			mean_delta = 0.0;
-			for(c=0;c<N_cell;c++){
-				mean_delta += delta_all[c][g];
+			mean_log_fold_change = 0.0;
+			for(c=0;c<num_cells;c++){
+				mean_log_fold_change += log_fold_change_all_cg[c][g];
 			}
-			mean_delta /= (double)N_cell;
+			mean_log_fold_change /= (double)num_cells;
 
-			var_delta = 0.0;
-			for(c=0;c<N_cell;c++){
-				var_delta += (delta_all[c][g] - mean_delta)*(delta_all[c][g] - mean_delta);
+			log_fold_change_sample_var = 0.0;
+			for(c=0;c<num_cells;c++){
+				log_fold_change_sample_var += (log_fold_change_all_cg[c][g] - mean_log_fold_change)*(log_fold_change_all_cg[c][g] - mean_log_fold_change);
 			}
-			var_delta /= (double)N_cell - 1.0 ;
+			log_fold_change_sample_var /= (double)num_cells - 1.0 ;
 	
-			mean_epsilon2 = 0.0;
-			for(c=0;c<N_cell;c++){
-				mean_epsilon2 += epsilon2_all[c][g];
+			mean_log_fold_change_error_sq = 0.0;
+			for(c=0;c<num_cells;c++){
+				mean_log_fold_change_error_sq += log_fold_change_error_sq_all_cg[c][g];
 			}
-			mean_epsilon2 /= (double)N_cell;
+			mean_log_fold_change_error_sq /= (double)num_cells;
 
-			if(var_delta/mean_epsilon2 >= s2n_cutoff){
-				idx_gene[g] = true;
-				N_gene_cutoff += 1;
+			if(log_fold_change_sample_var/mean_log_fold_change_error_sq >= s2n_cutoff){
+				keep_gene_g[g] = true;
+				num_genes_kept += 1;
 			}
 			else{
-				idx_gene[g] = false;
+				keep_gene_g[g] = false;
 			}
 		}
 	}else{
-		N_gene_cutoff = N_gene;
+		num_genes_kept = num_genes;
 	}
 	
-	double **delta = new double *[N_cell];
-	for(c=0;c<N_cell;c++)
-		delta[c] = new double[N_gene_cutoff];
+	double **log_fold_change_cg = new double *[num_cells]; // <delta_gc> of the genes above the cut-off, indexed [cell][gene].
+	for(c=0;c<num_cells;c++)
+		log_fold_change_cg[c] = new double[num_genes_kept];
 
-	double **epsilon2 = new double *[N_cell];
-	for(c=0;c<N_cell;c++)
-		epsilon2[c] = new double[N_gene_cutoff];
+	double **log_fold_change_error_sq_cg = new double *[num_cells]; // epsilon_gc^2 of the genes above the cut-off.
+	for(c=0;c<num_cells;c++)
+		log_fold_change_error_sq_cg[c] = new double[num_genes_kept];
 
-	double *variance = new double [N_gene_cutoff];
+	double *gene_variance_g = new double [num_genes_kept]; // v_g of the genes above the cut-off.
 
 	if (s2n_cutoff > 0.0){
 		// Copy genes with signal to noise above cut-off
 		int k = 0;
-		for(g=0;g<N_gene;g++){
-			if(idx_gene[g]){
-				for(c=0;c<N_cell;c++){
-					delta[c][k] = delta_all[c][g];
-					epsilon2[c][k] = epsilon2_all[c][g];
+		for(g=0;g<num_genes;g++){
+			if(keep_gene_g[g]){
+				for(c=0;c<num_cells;c++){
+					log_fold_change_cg[c][k] = log_fold_change_all_cg[c][g];
+					log_fold_change_error_sq_cg[c][k] = log_fold_change_error_sq_all_cg[c][g];
 				}
-				variance[k] = variance_all[g];
+				gene_variance_g[k] = gene_variance_all_g[g];
 				k++;
 			}
 		}
 	}else{
-		for(g=0;g<N_gene;g++){
-            for(c=0;c<N_cell;c++){
-                delta[c][g] = delta_all[c][g];
-                epsilon2[c][g] = epsilon2_all[c][g];
+		for(g=0;g<num_genes;g++){
+            for(c=0;c<num_cells;c++){
+                log_fold_change_cg[c][g] = log_fold_change_all_cg[c][g];
+                log_fold_change_error_sq_cg[c][g] = log_fold_change_error_sq_all_cg[c][g];
             }
-            variance[g] = variance_all[g];
+            gene_variance_g[g] = gene_variance_all_g[g];
         }
 	}
 
-	N_gene = N_gene_cutoff;
-	cout << "N_gene after cut-off :" << N_gene << "\n"; 
+	num_genes = num_genes_kept;
+	cout << "N_gene after cut-off :" << num_genes << "\n"; 
 
 	// delete temporary variables
-	for(c=0;c<N_cell;c++){
-		delete[] delta_all[c];
-		delete[] epsilon2_all[c];
+	for(c=0;c<num_cells;c++){
+		delete[] log_fold_change_all_cg[c];
+		delete[] log_fold_change_error_sq_all_cg[c];
 	}
-	delete[] delta_all;
-	delete[] epsilon2_all;
-	delete[] variance_all;
+	delete[] log_fold_change_all_cg;
+	delete[] log_fold_change_error_sq_all_cg;
+	delete[] gene_variance_all_g;
 
 	// Get distance
 	cout << "Get distance... ";
-	double **D = new double *[N_cell];
-	for(c=0; c<N_cell; c++)
-		D[c] = new double[N_cell];
+	double **distance_cc = new double *[num_cells]; // d_cc', the distance between every pair of cells (SI Eqs. 50, 72).
+	for(c=0; c<num_cells; c++)
+		distance_cc[c] = new double[num_cells];
 
 	int i,j;
-	for(i=0;i<N_cell;i++){
-		for(j=0;j<N_cell;j++){
-			D[i][j] = 0.0;
+	for(i=0;i<num_cells;i++){
+		for(j=0;j<num_cells;j++){
+			distance_cc[i][j] = 0.0;
 		}
 	}
 	if(with_error_bar)
-		get_distance_errorbar(delta,epsilon2,variance,D,N_gene,N_cell,N_threads);
+		get_distance_errorbar(log_fold_change_cg,log_fold_change_error_sq_cg,gene_variance_g,distance_cc,num_genes,num_cells,num_threads);
 	else
-		get_distance_euclidean(delta,D,N_gene,N_cell,N_threads);
+		get_distance_euclidean(log_fold_change_cg,distance_cc,num_genes,num_cells,num_threads);
   	cout << "\n";
 
 	// Print distance
@@ -189,189 +193,193 @@ int main(int argc, char** argv){
 	out_file += ".txt";
 
 	cout << "Print distance in " << out_file;
-	print_distance(out_file, D, N_cell);
+	print_distance(out_file, distance_cc, num_cells);
   	cout << "\n";
 
 	return 0;
 }
 
-void get_distance_errorbar(double **delta, double **epsilon2, double *variance, double **D, int N_gene, int N_cell, int N_threads){
+void get_distance_errorbar(double **log_fold_change_cg, double **log_fold_change_error_sq_cg, double *gene_variance_g, double **distance_cc, int num_genes, int num_cells, int num_threads){
 
-	// Rescaling of delta and epsilon2
+	// Remove the shrinkage towards zero caused by the prior N(0, v_g), in place:
+	// <delta_gc> becomes delta~_gc and epsilon_gc^2 becomes eta_gc^2 (SI Eqs. 62, 63).
+	// From here on log_fold_change_cg and log_fold_change_error_sq_cg hold delta~_gc and eta_gc^2.
 	int g, c;
-	double factor;
-	for(g=0;g<N_gene;g++){
-		for(c=0;c<N_cell;c++){
-			if( variance[g]-epsilon2[c][g] > 0.0 )
-				factor = variance[g]/(variance[g]-epsilon2[c][g]);
+	double prior_removal_factor; // v_g/(v_g - epsilon_gc^2), which turns <delta_gc> into delta~_gc and epsilon_gc^2 into eta_gc^2 (SI Eqs. 62, 63).
+	for(g=0;g<num_genes;g++){
+		for(c=0;c<num_cells;c++){
+			if( gene_variance_g[g]-log_fold_change_error_sq_cg[c][g] > 0.0 )
+				prior_removal_factor = gene_variance_g[g]/(gene_variance_g[g]-log_fold_change_error_sq_cg[c][g]);
 			else
-				factor = variance[g]/0.000001;
+				prior_removal_factor = gene_variance_g[g]/0.000001;
 
-			delta[c][g] = delta[c][g]*factor;
-			epsilon2[c][g] = epsilon2[c][g]*factor;
+			log_fold_change_cg[c][g] = log_fold_change_cg[c][g]*prior_removal_factor;
+			log_fold_change_error_sq_cg[c][g] = log_fold_change_error_sq_cg[c][g]*prior_removal_factor;
 		}
 	}
 
-	// define variance_gene*alpha_bin*Alpha_gene
-	int k;
-	int N_bin(401);
-	double da(0.005);
-	double a;
+	// alpha_times_variance_ga = alpha*v_g for every gene and grid point of alpha (SI Eq. 56)
+	int a;
+	int num_alpha_bins(401); // Number of grid points of the hyperparameter alpha (SI Eq. 56).
+	double alpha_step(0.005); // Spacing of the grid of alpha, which runs from 0 to 2.
+	double alpha; // Current value of alpha: 0 means identical cells and 2 means as distant as a random pair (SI Eq. 56).
 
-	double **alpha_v = new double *[N_gene];
-	for(g=0;g<N_gene;g++)
-		alpha_v[g] = new double [N_bin];
+	double **alpha_times_variance_ga = new double *[num_genes];
+	for(g=0;g<num_genes;g++)
+		alpha_times_variance_ga[g] = new double [num_alpha_bins];
 
-	for(g=0;g<N_gene;g++){
-		a = 0.0;
-		for(k=0;k<N_bin;k++){
-			alpha_v[g][k] = a*variance[g];
-			a += da;
+	for(g=0;g<num_genes;g++){
+		alpha = 0.0;
+		for(a=0;a<num_alpha_bins;a++){
+			alpha_times_variance_ga[g][a] = alpha*gene_variance_g[g];
+			alpha += alpha_step;
 		}
 	}
 
-	int i, N_parloop;
-	if ( (N_cell % 2) == 0 ){
-		N_parloop = N_cell/2;
+	int i, num_row_pairs;
+	if ( (num_cells % 2) == 0 ){
+		num_row_pairs = num_cells/2;
 	}else{
-		N_parloop =(N_cell-1)/2;
-		i = N_parloop;
-		get_Di_errorbar(delta,epsilon2,alpha_v,D[i],N_gene,N_cell,i,N_bin);
+		num_row_pairs =(num_cells-1)/2;
+		i = num_row_pairs;
+		distance_row_errorbar(log_fold_change_cg,log_fold_change_error_sq_cg,alpha_times_variance_ga,distance_cc[i],num_genes,num_cells,i,num_alpha_bins);
 	}
-	#pragma omp parallel for num_threads(N_threads)
-	for (i=0; i<N_parloop; i++){
-		get_Di_errorbar(delta,epsilon2,alpha_v,D[i],N_gene,N_cell,i,N_bin);
-		get_Di_errorbar(delta,epsilon2,alpha_v,D[N_cell-1-i],N_gene,N_cell,N_cell-i-1,N_bin);
+	#pragma omp parallel for num_threads(num_threads)
+	for (i=0; i<num_row_pairs; i++){
+		distance_row_errorbar(log_fold_change_cg,log_fold_change_error_sq_cg,alpha_times_variance_ga,distance_cc[i],num_genes,num_cells,i,num_alpha_bins);
+		distance_row_errorbar(log_fold_change_cg,log_fold_change_error_sq_cg,alpha_times_variance_ga,distance_cc[num_cells-1-i],num_genes,num_cells,num_cells-i-1,num_alpha_bins);
 	}
 	return;
 }
 
-void get_Di_errorbar(double **delta, double **epsilon2, double **alpha_v, double *D, int N_gene, int N_cell, int i, int N_bin){
+// Fills distance_row_c[j] = d_ij for all cells j > i.
+// unshrunk_log_fold_change_cg is delta~_gc and unshrunk_log_fold_change_error_sq_cg is eta_gc^2 (SI Eqs. 62, 63), after the rescaling in get_distance_errorbar.
+void distance_row_errorbar(double **unshrunk_log_fold_change_cg, double **unshrunk_log_fold_change_error_sq_cg, double **alpha_times_variance_ga, double *distance_row_c, int num_genes, int num_cells, int i, int num_alpha_bins){
 	
-	int j, g, k;
-	double q, f;
-	double x2[N_gene];
-	double eps2[N_gene];
-	double lik[N_bin];
-	double lik_max, lik_tot;
-	for (j=i+1; j<N_cell; j++){
+	int j, g, a;
+	double pair_total_variance, shrinkage; // pair_total_variance = alpha v_g + eta_g^2, the variance of x_g (SI Eq. 67); shrinkage = f_g(alpha) (SI Eq. 71).
+	double log_fold_change_diff_sq_g[num_genes]; // x_g^2, the squared difference of the estimated log fold changes of the two cells (SI Eq. 52).
+	double pair_error_sq_g[num_genes]; // eta_g^2 = eta_gc^2 + eta_gc'^2, the noise on x_g (SI text after Eq. 63).
+	double alpha_likelihood_a[num_alpha_bins]; // First log P(D_cc' | alpha, v) (SI Eq. 67), then the posterior P(alpha | D_cc', v) (SI Eq. 68).
+	double max_log_likelihood, likelihood_sum; // Maximum of the log-likelihood over alpha, and the sum used to normalise it.
+	for (j=i+1; j<num_cells; j++){
 		
-		// Compute 
+		// Compute
 		// x_g^2 = (delta_gi - delta_gj)^2
-		// eps2 = epsilon2_g1 + epsilon2_g2
-		// f = alpha_v/(eps2 + alpha_v)
-		for(g=0;g<N_gene;g++){
-			x2[g] = (delta[i][g] - delta[j][g])*(delta[i][g] - delta[j][g]);
-			eps2[g] = epsilon2[i][g] + epsilon2[j][g];
+		// pair_error_sq_g = eta_gc^2 + eta_gc'^2
+		// shrinkage = f_g(alpha) = alpha_times_variance_ga/(pair_error_sq_g + alpha_times_variance_ga) (SI Eq. 71)
+		for(g=0;g<num_genes;g++){
+			log_fold_change_diff_sq_g[g] = (unshrunk_log_fold_change_cg[i][g] - unshrunk_log_fold_change_cg[j][g])*(unshrunk_log_fold_change_cg[i][g] - unshrunk_log_fold_change_cg[j][g]);
+			pair_error_sq_g[g] = unshrunk_log_fold_change_error_sq_cg[i][g] + unshrunk_log_fold_change_error_sq_cg[j][g];
 		}
 
 		// get likelihood
-		lik_max = -1000000000.0;
-		for(k=0;k<N_bin;k++){
+		max_log_likelihood = -1000000000.0;
+		for(a=0;a<num_alpha_bins;a++){
 			// log-likelihood over all genes
-			lik[k] = 0.0;
-			for(g=0;g<N_gene;g++){
-				q= eps2[g] + alpha_v[g][k];
-				lik[k] -= .5*x2[g]/q;
-				lik[k] -= .5*log(q);
+			alpha_likelihood_a[a] = 0.0;
+			for(g=0;g<num_genes;g++){
+				pair_total_variance= pair_error_sq_g[g] + alpha_times_variance_ga[g][a];
+				alpha_likelihood_a[a] -= .5*log_fold_change_diff_sq_g[g]/pair_total_variance;
+				alpha_likelihood_a[a] -= .5*log(pair_total_variance);
 			}
 			// keep  track of the maximum log-likelihood
-			if(lik[k] > lik_max)
-				lik_max = lik[k];
+			if(alpha_likelihood_a[a] > max_log_likelihood)
+				max_log_likelihood = alpha_likelihood_a[a];
 		}
 
 		// normalize
-		lik_tot = 0.0;
-		for(k=0;k<N_bin;k++){
-			lik[k] -= lik_max;
+		likelihood_sum = 0.0;
+		for(a=0;a<num_alpha_bins;a++){
+			alpha_likelihood_a[a] -= max_log_likelihood;
 			// turn into likelihood
-			lik[k] = exp(lik[k]);
+			alpha_likelihood_a[a] = exp(alpha_likelihood_a[a]);
 			// keep track of normalization
-			lik_tot += lik[k];
+			likelihood_sum += alpha_likelihood_a[a];
 		}
 
 		// calculate expectation values
-		D[j] = 0.0;
-		for(k=0;k<N_bin;k++){
+		distance_row_c[j] = 0.0;
+		for(a=0;a<num_alpha_bins;a++){
 			// posterior of this alpha
-			lik[k] /= lik_tot;
-			for(g=0;g<N_gene;g++){
-				// This is f_g(alpha)
-				f = alpha_v[g][k]/(alpha_v[g][k] + eps2[g]);
-				// this is contribution to distance squared
-				D[j] += lik[k]*(f*f*x2[g] + f*eps2[g]);
+			alpha_likelihood_a[a] /= likelihood_sum;
+			for(g=0;g<num_genes;g++){
+				// This is f_g(alpha), SI Eq. 71
+				shrinkage = alpha_times_variance_ga[g][a]/(alpha_times_variance_ga[g][a] + pair_error_sq_g[g]);
+				// this is the contribution of gene g to the squared distance (SI Eq. 72)
+				distance_row_c[j] += alpha_likelihood_a[a]*(shrinkage*shrinkage*log_fold_change_diff_sq_g[g] + shrinkage*pair_error_sq_g[g]);
 			}
 		}
-		D[j] = sqrt(D[j]);
+		distance_row_c[j] = sqrt(distance_row_c[j]);
 	}
 	return;
 }
 
 
-void get_distance_euclidean(double **delta, double **D, int N_gene, int N_cell, int N_threads){
+void get_distance_euclidean(double **log_fold_change_cg, double **distance_cc, int num_genes, int num_cells, int num_threads){
 
-    int i, N_parloop;
-    if ( (N_cell % 2) == 0 ){
+    int i, num_row_pairs;
+    if ( (num_cells % 2) == 0 ){
         cout << "N_cell even\n";
-        N_parloop = N_cell/2;
+        num_row_pairs = num_cells/2;
     }else{
         cout << "N_cell odd\n";
-        N_parloop =(N_cell-1)/2;
-        i = N_parloop;
-        get_Di_euclidean(delta,D[i],N_gene,N_cell,i);
+        num_row_pairs =(num_cells-1)/2;
+        i = num_row_pairs;
+        distance_row_euclidean(log_fold_change_cg,distance_cc[i],num_genes,num_cells,i);
     }
-    #pragma omp parallel for num_threads(N_threads)
-    for (i=0; i<N_parloop; i++){
-        get_Di_euclidean(delta,D[i],N_gene,N_cell,i);
-        get_Di_euclidean(delta,D[N_cell-1-i],N_gene,N_cell,N_cell-i-1);
+    #pragma omp parallel for num_threads(num_threads)
+    for (i=0; i<num_row_pairs; i++){
+        distance_row_euclidean(log_fold_change_cg,distance_cc[i],num_genes,num_cells,i);
+        distance_row_euclidean(log_fold_change_cg,distance_cc[num_cells-1-i],num_genes,num_cells,num_cells-i-1);
     }
     return;
 }
 
-void get_Di_euclidean(double **delta, double *D, int N_gene, int N_cell, int i){
+void distance_row_euclidean(double **log_fold_change_cg, double *distance_row_c, int num_genes, int num_cells, int i){
 
     int j, g;
-    double diff;
-    for (j=i+1; j<N_cell; j++){
-        D[j] = 0.0;
-        for (g=0; g<N_gene; g++){
-            diff = delta[i][g] - delta[j][g];
-            D[j] += diff*diff;
+    double log_fold_change_diff; // Difference of the log fold changes of the two cells for one gene.
+    for (j=i+1; j<num_cells; j++){
+        distance_row_c[j] = 0.0;
+        for (g=0; g<num_genes; g++){
+            log_fold_change_diff = log_fold_change_cg[i][g] - log_fold_change_cg[j][g];
+            distance_row_c[j] += log_fold_change_diff*log_fold_change_diff;
         }
-        D[j] = sqrt(D[j]);
+        distance_row_c[j] = sqrt(distance_row_c[j]);
     }
 
     return;
 }
 
 
-void load_matrix(string sanity_folder, double **delta, double **epsilon2, double *variance, int N_gene, int N_cell, bool with_error_bar){
+void load_matrix(string sanity_folder, double **log_fold_change_cg, double **log_fold_change_error_sq_cg, double *gene_variance_g, int num_genes, int num_cells, bool with_error_bar){
 
-	string my_file;
-	FILE *infp;
-	char ss[3000000];
+	string path;
+	FILE *file;
+	char line[3000000];
 	char *token;
 	char *retval;
 	int g, c;
-	double epsilon;
+	double log_fold_change_error; // epsilon_gc, read from d_delta.txt.
 
 	// Read delta
-	my_file = sanity_folder + "delta.txt";
-	infp = (FILE *) fopen(my_file.c_str(),"r");
-	if(infp == NULL){
-		fprintf(stderr,"Cannot open input file %s\n",my_file.c_str());
+	path = sanity_folder + "delta.txt";
+	file = (FILE *) fopen(path.c_str(),"r");
+	if(file == NULL){
+		fprintf(stderr,"Cannot open input file %s\n",path.c_str());
 		exit(EXIT_FAILURE);
 	}
-	for (g = 0; g < N_gene; g++){
-		retval = fgets(ss,3000000,infp);
+	for (g = 0; g < num_genes; g++){
+		retval = fgets(line,3000000,file);
 		if(retval == NULL){
 			fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
 			return;
 		}
-		token = strtok(ss," \t");
-		for (c=0; c<N_cell; c++){	
+		token = strtok(line," \t");
+		for (c=0; c<num_cells; c++){	
 			if(token != NULL){
-				delta[c][g] = atof(token);
+				log_fold_change_cg[c][g] = atof(token);
 			}else{
 				fprintf(stderr,"Error: not enough fields on line number %d:\n",g);
 				return; 
@@ -383,26 +391,26 @@ void load_matrix(string sanity_folder, double **delta, double **epsilon2, double
 			fprintf(stderr,"Error: too many fields on line number %d:\n",g);
 		}
 	}
-	fclose(infp);
+	fclose(file);
 
 	// Read epsilon
-	my_file = sanity_folder + "d_delta.txt";
-	infp = (FILE *) fopen(my_file.c_str(),"r");
-	if(infp == NULL){
-		fprintf(stderr,"Cannot open input file %s\n",my_file.c_str());
+	path = sanity_folder + "d_delta.txt";
+	file = (FILE *) fopen(path.c_str(),"r");
+	if(file == NULL){
+		fprintf(stderr,"Cannot open input file %s\n",path.c_str());
 		exit(EXIT_FAILURE);
 	}
-	for (g = 0; g < N_gene; g++){
-		retval = fgets(ss,3000000,infp);
+	for (g = 0; g < num_genes; g++){
+		retval = fgets(line,3000000,file);
 		if(retval == NULL){
 			fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
 			return;
 		}
-		token = strtok(ss," \t");
-		for (c=0; c<N_cell; c++){	
+		token = strtok(line," \t");
+		for (c=0; c<num_cells; c++){	
 			if(token != NULL){
-				epsilon = atof(token);
-				epsilon2[c][g] = epsilon*epsilon;
+				log_fold_change_error = atof(token);
+				log_fold_change_error_sq_cg[c][g] = log_fold_change_error*log_fold_change_error;
 			}else{
 				fprintf(stderr,"Error: not enough fields on line number %d:\n",g);
 				return; 
@@ -414,25 +422,25 @@ void load_matrix(string sanity_folder, double **delta, double **epsilon2, double
 			fprintf(stderr,"Error: too many fields on line number %d:\n",g);
 		}
 	}
-	fclose(infp);
+	fclose(file);
 
 	// Read variance
 	if(with_error_bar){
-		my_file = sanity_folder + "variance.txt";
-		infp = (FILE *) fopen(my_file.c_str(),"r");
-		if(infp == NULL){
-			fprintf(stderr,"Cannot open input file %s\n",my_file.c_str());
+		path = sanity_folder + "variance.txt";
+		file = (FILE *) fopen(path.c_str(),"r");
+		if(file == NULL){
+			fprintf(stderr,"Cannot open input file %s\n",path.c_str());
 			exit(EXIT_FAILURE);
 		}
-		for (g = 0; g < N_gene; g++){
-			retval = fgets(ss,3000000,infp);
+		for (g = 0; g < num_genes; g++){
+			retval = fgets(line,3000000,file);
 			if(retval == NULL){
 				fprintf(stderr,"Error: Couldn't read a line at row number %d\n",g);
 				return;
 			}
-			token = strtok(ss," \t");
+			token = strtok(line," \t");
 			if(token != NULL){
-				variance[g] = atof(token);
+				gene_variance_g[g] = atof(token);
 			}else{
 				fprintf(stderr,"Error: not enough fields on line number %d:\n",g);
 				return;
@@ -442,27 +450,27 @@ void load_matrix(string sanity_folder, double **delta, double **epsilon2, double
 				fprintf(stderr,"Error: too many fields on line number %d:\n",g);
 			}
 		}
-		fclose(infp);
+		fclose(file);
 	}
 
 	return;
 }
 
 
-void print_distance(string out_file, double **D, int N_cell){
+void print_distance(string out_file, double **distance_cc, int num_cells){
 	
 	int i, j;
 	string file_name(out_file);
 	ofstream outfile(file_name);
-	for (i=0; i<(N_cell-1); i++){
-		for (j=i+1; j<N_cell; j++)
-			outfile << D[i][j] << "\n";
+	for (i=0; i<(num_cells-1); i++){
+		for (j=i+1; j<num_cells; j++)
+			outfile << distance_cc[i][j] << "\n";
 	}
 	outfile.close();
 }
 
 
-void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff, bool &with_error_bar, int &N_threads, int &N_gene, int &N_cell){
+void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff, bool &with_error_bar, int &num_threads, int &num_genes, int &num_cells){
 
     if (argc<2)
         show_usage();
@@ -510,7 +518,7 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
                 if(j==0) sanity_folder = argv[idx+1];
                 if(j==1) s2n_cutoff = atof(argv[idx+1]);
 				if(j==2) error_bar = argv[idx+1];
-                if(j==3) N_threads = atoi(argv[idx+1]);
+                if(j==3) num_threads = atoi(argv[idx+1]);
 
                 // add '/' to out_folder if not already. `-f ""` gives an empty string, on
                 // which back() would be undefined behaviour, so treat it as the cwd.
@@ -533,29 +541,29 @@ void parse_argv(int argc,char** argv, string &sanity_folder, double &s2n_cutoff,
         with_error_bar = false;
 
     // Get number of gene and number of cells
-	N_gene = -1;
-	N_cell = -1;
+	num_genes = -1;
+	num_cells = -1;
 	ifstream in(sanity_folder + "delta.txt");
 	if (in.is_open()){
-		N_gene = 0;
-		N_cell = 0;
+		num_genes = 0;
+		num_cells = 0;
 		string line;
 		
 		// get first line and count columns
 		getline(in, line);
-		++N_gene;
+		++num_genes;
 		istringstream iss(line);
 		do{
 			string sub;
 			iss >> sub;
 			if (sub.length())
-				++N_cell;
+				++num_cells;
 		}
 		while(iss);
 
 		// Now count genes in remaining lines
 		while ( getline(in, line) ){
-			   ++N_gene;
+			   ++num_genes;
 		}
 	}else{
 		cerr << "Unable to open " + sanity_folder + "delta.txt\n";

@@ -1,7 +1,7 @@
 #include "Digamma_Trigamma.h"
 #include <cmath>
 
-double Psi_0(double x){
+double digamma(double x){
 
     if ( x == 1.0 )
         return -0.577215664901532;
@@ -10,7 +10,7 @@ double Psi_0(double x){
 
 }
 
-double Psi_1(double x){
+double trigamma(double x){
 	
     if ( x == 1.0 )
     	return 1.644934066848226;

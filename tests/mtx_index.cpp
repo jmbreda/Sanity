@@ -19,8 +19,8 @@ int main(int argc, char** argv) {
         int rows=0, genes=0, cells=0;
         std::map<int,int> index;
         std::vector<RowBlock> blocks;
-        std::vector<double> libraries, totals;
-        Get_G_C_MTX(argv[1], rows, genes, cells, index, blocks, libraries, totals, std::stoi(argv[2]));
+        std::vector<double> cell_totals_c, gene_totals_g;
+        index_mtx_counts(argv[1], rows, genes, cells, index, blocks, cell_totals_c, gene_totals_g, std::stoi(argv[2]));
         const std::filesystem::path directory(argv[3]);
         std::filesystem::create_directory(directory);
         std::vector<std::int64_t> offsets;
@@ -34,8 +34,8 @@ int main(int argc, char** argv) {
         save(directory/"offsets.bin", offsets);
         save(directory/"entries.bin", entries);
         save(directory/"row_indices.bin", row_indices);
-        save(directory/"gene_totals.bin", totals);
-        save(directory/"cell_totals.bin", libraries);
+        save(directory/"gene_totals.bin", gene_totals_g);
+        save(directory/"cell_totals.bin", cell_totals_c);
         std::ofstream metadata(directory/"dimensions.txt");
         metadata<<rows<<' '<<genes<<' '<<cells<<'\n';
         metadata.close();

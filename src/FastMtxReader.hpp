@@ -91,10 +91,12 @@ inline long long next_line(std::ifstream& input, long long offset, long long end
     return ending;
 }
 
-inline void index(const std::string& filename, int threads, int& row_count, int& genes, int& cells,
-                  std::map<int, int>& gene_index, std::vector<RowBlock>& blocks,
-                  std::vector<double>& libraries, std::vector<double>& totals, int& actual_threads) {
-    if (threads < 1) throw std::runtime_error("Thread count must be positive");
+// Same outputs as index_mtx_counts (see ReadInputFiles.h).
+// The exact_*_totals vectors are the integer totals before they are converted to double.
+inline void index(const std::string& filename, int num_threads, int& num_input_rows, int& num_genes, int& num_cells,
+                  std::map<int, int>& row_to_gene, std::vector<RowBlock>& mtx_rows_g,
+                  std::vector<double>& cell_totals_c, std::vector<double>& gene_totals_g, int& actual_threads) {
+    if (num_threads < 1) throw std::runtime_error("Thread count must be positive");
     std::ifstream input(filename, std::ios::binary);
     if (!input) throw std::runtime_error("Cannot open MTX input");
     input.seekg(0, std::ios::end);
@@ -133,7 +135,7 @@ inline void index(const std::string& filename, int threads, int& row_count, int&
     std::vector<std::exception_ptr> failures;
     std::vector<long long> boundaries;
     std::atomic<bool> cancelled{false};
-#pragma omp parallel num_threads(threads)
+#pragma omp parallel num_threads(num_threads)
     {
 #pragma omp single
         {
@@ -226,7 +228,7 @@ inline void index(const std::string& filename, int threads, int& row_count, int&
         }
     }
     for (const auto& failure : failures) if (failure) std::rethrow_exception(failure);
-    std::vector<std::uint64_t> gene_totals(rows, 0), cell_totals(columns, 0), entries(rows, 0);
+    std::vector<std::uint64_t> exact_gene_totals_g(rows, 0), exact_cell_totals_c(columns, 0), entries(rows, 0);
     std::vector<long long> offsets(rows, -1);
     int last_row = -1;
     std::uint64_t observed = 0;
@@ -238,30 +240,30 @@ inline void index(const std::string& filename, int threads, int& row_count, int&
         for (std::size_t row = 0; row < rows; ++row) {
             if (offsets[row] < 0 && partial.entries[row]) offsets[row] = partial.offsets[row];
             entries[row] += partial.entries[row];
-            add_exact(gene_totals[row], partial.gene_totals[row]);
+            add_exact(exact_gene_totals_g[row], partial.gene_totals[row]);
         }
-        for (std::size_t cell = 0; cell < columns; ++cell) add_exact(cell_totals[cell], partial.cell_totals[cell]);
+        for (std::size_t cell = 0; cell < columns; ++cell) add_exact(exact_cell_totals_c[cell], partial.cell_totals[cell]);
     }
     if (observed != nonzeros) throw std::runtime_error("MTX entry count differs from header");
 
     // Publish only a complete index; an unsupported input leaves the caller untouched.
-    row_count = static_cast<int>(rows);
-    cells = static_cast<int>(columns);
-    genes = 0;
-    blocks.clear();
-    totals.clear();
-    gene_index.clear();
-    libraries.assign(cell_totals.begin(), cell_totals.end());
-    for (int row = 0; row < row_count; ++row) {
-        gene_index[row] = entries[row] ? genes : -1;
+    num_input_rows = static_cast<int>(rows);
+    num_cells = static_cast<int>(columns);
+    num_genes = 0;
+    mtx_rows_g.clear();
+    gene_totals_g.clear();
+    row_to_gene.clear();
+    cell_totals_c.assign(exact_cell_totals_c.begin(), exact_cell_totals_c.end());
+    for (int row = 0; row < num_input_rows; ++row) {
+        row_to_gene[row] = entries[row] ? num_genes : -1;
         if (entries[row]) {
             RowBlock block;
             block.offset = offsets[row];
             block.nnz = entries[row];
             block.row_index = row;
-            blocks.push_back(block);
-            totals.push_back(double(gene_totals[row]));
-            ++genes;
+            mtx_rows_g.push_back(block);
+            gene_totals_g.push_back(double(exact_gene_totals_g[row]));
+            ++num_genes;
         }
     }
 }
