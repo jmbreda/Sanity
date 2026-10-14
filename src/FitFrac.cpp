@@ -1,5 +1,5 @@
 #include "FitFrac.h"
-#include "FukushimaLambertW.h"
+#include "helpers/math/FukushimaLambertW.h"
 #include <iostream>
 #include <iomanip> // Required for setprecision
 #include <cmath>

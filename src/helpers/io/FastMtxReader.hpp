@@ -1,7 +1,7 @@
 #ifndef SANITY_FAST_MTX_READER_HPP
 #define SANITY_FAST_MTX_READER_HPP
 
-#include "ReadInputFiles.h"
+#include "helpers/io/ReadInputFiles.h"
 #include <algorithm>
 #include <atomic>
 #include <charconv>

@@ -24,13 +24,13 @@
     #include <direct.h> // For _mkdir on Windows
 #endif
 
-#include "ReadInputFiles.h"
-#include "DenseRowReader.hpp"
+#include "helpers/io/ReadInputFiles.h"
+#include "helpers/io/DenseRowReader.hpp"
 #include "FitFrac.h"
-#include "Digamma_Trigamma.h"
-#include "Writer.hpp"
-#include "FormatOutput.hpp"
-#include "npy_writer.hpp"
+#include "helpers/math/Digamma_Trigamma.h"
+#include "helpers/io/Writer.hpp"
+#include "helpers/io/FormatOutput.hpp"
+#include "helpers/io/npy_writer.hpp"
 #include "Version.h"
 
 enum ParseResult

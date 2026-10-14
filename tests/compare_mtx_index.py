@@ -59,7 +59,7 @@ def main():
         driver = directory/"mtx_index"
         command = [*shlex.split(os.environ.get("CXX", "g++")), "-O2", "-std=c++17", "-fopenmp",
                    "-I"+str(root/"src"), str(root/"tests/mtx_index.cpp"),
-                   str(root/"src/ReadInputFiles.cpp"), "-lz", "-o", str(driver)]
+                   str(root/"src/helpers/io/ReadInputFiles.cpp"), "-lz", "-o", str(driver)]
         subprocess.run(command, check=True)
         for name, content in fixtures.items():
             compressed = name == "gzip"

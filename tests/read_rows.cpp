@@ -1,4 +1,4 @@
-#include "DenseRowReader.hpp"
+#include "helpers/io/DenseRowReader.hpp"
 #include <algorithm>
 #include <exception>
 #include <fstream>
