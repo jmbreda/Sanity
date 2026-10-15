@@ -29,32 +29,38 @@ CFLAGS= -I. -std=c++17 -O3 $(ARCH_FLAG) -flto=auto -fopenmp -fno-math-errno
 LDFLAGS= -lz
 BINDIR := ../bin
 
-Sanity: calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o DenseRowReader.o | $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity calc_true_variation_parallel_prior_mu_sigma.o ReadInputFiles.o FitFrac.o FukushimaLambertW.o Digamma_Trigamma.o npy_writer.o DenseRowReader.o $(LDFLAGS)
+IO := helpers/io
+MATH := helpers/math
+
+SANITY_OBJS := calc_true_variation_parallel_prior_mu_sigma.o FitFrac.o \
+    ReadInputFiles.o DenseRowReader.o npy_writer.o FukushimaLambertW.o Digamma_Trigamma.o
+
+Sanity: $(SANITY_OBJS) | $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity $(SANITY_OBJS) $(LDFLAGS)
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp ReadInputFiles.h FitFrac.h FukushimaLambertW.h Digamma_Trigamma.h Writer.hpp FormatOutput.hpp npy_writer.hpp DenseRowReader.hpp Version.h
+calc_true_variation_parallel_prior_mu_sigma.o: calc_true_variation_parallel_prior_mu_sigma.cpp FitFrac.h Version.h $(IO)/FormatOutput.hpp $(IO)/ReadInputFiles.h $(IO)/DenseRowReader.hpp $(IO)/Writer.hpp $(IO)/npy_writer.hpp $(MATH)/Digamma_Trigamma.h
 	$(CC) $(CFLAGS) -c calc_true_variation_parallel_prior_mu_sigma.cpp
 
-DenseRowReader.o: DenseRowReader.cpp DenseRowReader.hpp ReadInputFiles.h
-	$(CC) $(CFLAGS) -c DenseRowReader.cpp
-
-npy_writer.o: npy_writer.cpp npy_writer.hpp
-	$(CC) $(CFLAGS) -c npy_writer.cpp
-
-ReadInputFiles.o: ReadInputFiles.cpp ReadInputFiles.h FastMtxReader.hpp
-	$(CC) $(CFLAGS) -c ReadInputFiles.cpp
-
-FitFrac.o: FitFrac.cpp FitFrac.h FukushimaLambertW.h
+FitFrac.o: FitFrac.cpp FitFrac.h $(MATH)/FukushimaLambertW.h
 	$(CC) $(CFLAGS) -c FitFrac.cpp
 
-FukushimaLambertW.o: FukushimaLambertW.cc FukushimaLambertW.h
-	$(CC) $(CFLAGS) -c FukushimaLambertW.cc
+DenseRowReader.o: $(IO)/DenseRowReader.cpp $(IO)/DenseRowReader.hpp $(IO)/ReadInputFiles.h
+	$(CC) $(CFLAGS) -c $(IO)/DenseRowReader.cpp
 
-Digamma_Trigamma.o: Digamma_Trigamma.cpp Digamma_Trigamma.h
-	$(CC) $(CFLAGS) -c Digamma_Trigamma.cpp
+npy_writer.o: $(IO)/npy_writer.cpp $(IO)/npy_writer.hpp
+	$(CC) $(CFLAGS) -c $(IO)/npy_writer.cpp
+
+ReadInputFiles.o: $(IO)/ReadInputFiles.cpp $(IO)/ReadInputFiles.h $(IO)/FastMtxReader.hpp
+	$(CC) $(CFLAGS) -c $(IO)/ReadInputFiles.cpp
+
+FukushimaLambertW.o: $(MATH)/FukushimaLambertW.cc $(MATH)/FukushimaLambertW.h
+	$(CC) $(CFLAGS) -c $(MATH)/FukushimaLambertW.cc
+
+Digamma_Trigamma.o: $(MATH)/Digamma_Trigamma.cpp $(MATH)/Digamma_Trigamma.h
+	$(CC) $(CFLAGS) -c $(MATH)/Digamma_Trigamma.cpp
 
 Sanity_distance: compute_distance.o | $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/Sanity_distance compute_distance.o

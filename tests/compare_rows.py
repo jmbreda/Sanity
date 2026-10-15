@@ -15,7 +15,7 @@ directory = Path(temporary.name)
 driver = directory/"read_rows"
 subprocess.run([*shlex.split(os.environ.get("CXX", "g++")), "-O2", "-std=c++17", "-fopenmp",
                 "-I"+str(root/"src"), str(root/"tests/read_rows.cpp"),
-                str(root/"src/DenseRowReader.cpp"), str(root/"src/ReadInputFiles.cpp"),
+                str(root/"src/helpers/io/DenseRowReader.cpp"), str(root/"src/helpers/io/ReadInputFiles.cpp"),
                 "-lz", "-o", str(driver)], check=True)
 generator = np.random.default_rng(731)
 counts = generator.poisson(2, (48, 64)).astype(float)

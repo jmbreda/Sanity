@@ -24,13 +24,13 @@
     #include <direct.h> // For _mkdir on Windows
 #endif
 
-#include "ReadInputFiles.h"
-#include "DenseRowReader.hpp"
+#include "helpers/io/ReadInputFiles.h"
+#include "helpers/io/DenseRowReader.hpp"
 #include "FitFrac.h"
-#include "Digamma_Trigamma.h"
-#include "Writer.hpp"
-#include "FormatOutput.hpp"
-#include "npy_writer.hpp"
+#include "helpers/math/Digamma_Trigamma.h"
+#include "helpers/io/Writer.hpp"
+#include "helpers/io/FormatOutput.hpp"
+#include "helpers/io/npy_writer.hpp"
 #include "Version.h"
 
 enum ParseResult
@@ -41,20 +41,23 @@ enum ParseResult
     ERROR
 };
 
+// "SI" in the comments is the Supplementary Information of Breda, Zavolan & van Nimwegen, Nat. Biotechnol. 2021.
+// Index letters at the end of a name give what an array runs over: g = genes, c = cells, b = grid points of the gene variance v_g.
+// The results of the fit of one gene.
 struct RowComputation
 {
-    double mu;
-    double var_mu;
-    std::vector<double> delta;
-    std::vector<double> var_delta;
-    double var_gene;
-    std::vector<double> lik;
+    double mean_ltq;                                    // mu_g, the mean log transcription quotient (LTQ) of the gene (SI Eq. 45).
+    double mean_ltq_error_sq;                           // (delta mu_g)^2, the variance of mu_g (SI Eq. 47).
+    std::vector<double> log_fold_change_c;              // delta_gc, the log fold change of each cell from the mean LTQ (SI Eqs. 14 and 39).
+    std::vector<double> log_fold_change_error_sq_c;     // epsilon_gc^2, the variance of delta_gc (SI Eq. 42).
+    double gene_variance;                               // v_g, the variance of the log fold changes across cells (SI Eq. 17).
+    std::vector<double> variance_likelihood_b;          // P(v_b | n_g), the posterior of v_g on the grid of variances (SI Eq. 34).
 };
 
 /***Function declarations ****/
-RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c, double n, const std::vector<double> &v_grid, int C, int numbin, int v_method, const std::vector<double>& log_N_c, double library_total, std::vector<double>& fitting_workspace);
-double get_epsilon_2(double d, double v, double n, double f);
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
+RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c, const std::vector<double> &cell_totals_c, double gene_total, const std::vector<double> &variance_grid_b, int num_cells, int num_bins, int variance_method, const std::vector<double>& log_cell_totals_c, double sum_cell_totals, std::vector<double>& fitting_workspace_c);
+double zero_count_log_fold_change_error_sq(double log_fold_change, double gene_variance, double gene_total, double fraction);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, int &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
 
 // Function to print a timestamped message to stderr
@@ -82,19 +85,19 @@ int main(int argc, char **argv)
     std::string cell_name_file("none");
     std::string in_file_extension("");
     std::string out_folder("./");
-    int N_threads(4);
+    int num_threads(4);
     bool print_extended_output(false);
-    double vmin = 0.001;
-    double vmax = 50.0;
-    int numbin = 160;
+    double variance_min = 0.001; // v_min, the smallest candidate gene variance (SI Section S1.1.4).
+    double variance_max = 50.0; // v_max, the largest candidate gene variance.
+    int num_bins = 160; // B, the number of grid points of the gene variance between v_min and v_max.
     bool no_norm(false);
-    int v_method = 2; // default is to output MAP: the maximum a posteriori estimate of v
+    int variance_method = 2; // How to estimate v_g: 0 = MARG, 1 = MLE, 2 = MAP (the default), 3 = EAP.
     bool gzip_output = false;
     bool npy_output = false;
     bool bonsai_output_mode = false;
     std::string out_suffix = "";
 
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, N_threads, print_extended_output, vmin, vmax, numbin, no_norm, v_method, gzip_output, npy_output, bonsai_output_mode);
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, num_threads, print_extended_output, variance_min, variance_max, num_bins, no_norm, variance_method, gzip_output, npy_output, bonsai_output_mode);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -111,52 +114,51 @@ int main(int argc, char **argv)
         return 1;
     }
     // count Number of genes and cells
-    int G, C;
-    // Number of rows in file
-    int N_rows;
-    // Gene idx map for mtx
-    std::map<int, int> gene_idx;
-    std::vector<RowBlock> mtx_rows;
-    std::vector<std::streampos> tsv_offsets;
-    std::vector<double> N_c; // total counts per cell
-    std::vector<double> n;   // total counts per gene
-    std::vector<std::string> gene_names;
-    std::vector<std::string> cell_names;
+    int num_genes; // G, the number of genes with at least one count.
+    int num_cells; // C, the number of cells.
+    int num_input_rows; // Number of rows (genes) in the input file, including rows without counts.
+    std::map<int, int> row_to_gene; // Maps each MTX row to the index of its gene among the kept genes (-1 if the row has no counts).
+    std::vector<RowBlock> mtx_rows_g; // Position and size of the entries of each kept gene in the MTX file.
+    std::vector<std::streampos> tsv_offsets_g; // Position of the row of each kept gene in the TSV file.
+    std::vector<double> cell_totals_c; // N_c, the total counts of each cell (SI Eq. 9).
+    std::vector<double> gene_totals_g; // n_g, the total counts of each gene (SI Eq. 15).
+    std::vector<std::string> gene_names_g;
+    std::vector<std::string> cell_names_c;
     logging_debug("Reading input file to get gene and cell counts");
     if (in_file_extension == "mtx")
     {
-        Get_G_C_MTX(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n, N_threads);
-        gene_names = Read_GeneNames(gene_name_file, gene_idx, G);
-        if (static_cast<int>(gene_names.size()) == 0)
+        index_mtx_counts(in_file, num_input_rows, num_genes, num_cells, row_to_gene, mtx_rows_g, cell_totals_c, gene_totals_g, num_threads);
+        gene_names_g = Read_GeneNames(gene_name_file, row_to_gene, num_genes);
+        if (static_cast<int>(gene_names_g.size()) == 0)
         {
             logging_debug("Warning: gene names file not found or empty, generating default gene names.");
-            gene_names.clear();
-            for (int g = 0; g < G; ++g)
+            gene_names_g.clear();
+            for (int g = 0; g < num_genes; ++g)
             {
-                gene_names.push_back("Gene_" + std::to_string(g + 1));
+                gene_names_g.push_back("Gene_" + std::to_string(g + 1));
             }
         }
-        cell_names = Read_CellNames(cell_name_file);
-        if (static_cast<int>(cell_names.size()) == 0)
+        cell_names_c = Read_CellNames(cell_name_file);
+        if (static_cast<int>(cell_names_c.size()) == 0)
         {
             logging_debug("Warning: cell names file not found or empty, generating default cell names.");
-            for (int c = 0; c < C; ++c)
+            for (int c = 0; c < num_cells; ++c)
             {
-                cell_names.push_back("Cell_" + std::to_string(c + 1));
+                cell_names_c.push_back("Cell_" + std::to_string(c + 1));
             }
         }
-        logging_debug("There were " + std::to_string(N_rows) + " rows");
+        logging_debug("There were " + std::to_string(num_input_rows) + " rows");
     }
     else
     {
-        Get_G_C_UMIcountMatrix(in_file, N_rows, G, C, tsv_offsets, N_c, n, cell_names, gene_names, N_threads);
-        logging_debug("There were " + std::to_string(N_rows) + " rows");
+        index_tsv_counts(in_file, num_input_rows, num_genes, num_cells, tsv_offsets_g, cell_totals_c, gene_totals_g, cell_names_c, gene_names_g, num_threads);
+        logging_debug("There were " + std::to_string(num_input_rows) + " rows");
     }
-    std::string genes_message = "The input contained " + std::to_string(N_rows) + " rows for " + std::to_string(C) +
-                                 " cells, and " + std::to_string(G) + " of these genes had at least one count in the dataset.";
-    if (N_rows != G)
+    std::string genes_message = "The input contained " + std::to_string(num_input_rows) + " rows for " + std::to_string(num_cells) +
+                                 " cells, and " + std::to_string(num_genes) + " of these genes had at least one count in the dataset.";
+    if (num_input_rows != num_genes)
     {
-        genes_message += " " + std::to_string(N_rows - G) + " genes were thus removed because no counts were detected.";
+        genes_message += " " + std::to_string(num_input_rows - num_genes) + " genes were thus removed because no counts were detected.";
     }
     logging_debug(genes_message);
 
@@ -166,35 +168,36 @@ int main(int argc, char **argv)
         logging_debug("No cell size normalization will be performed");
 
         // get mean count per cell
-        double mean_N_c = 0;
-        for (int c = 0; c < C; ++c)
+        double mean_cell_total = 0;
+        for (int c = 0; c < num_cells; ++c)
         {
-            mean_N_c += N_c[c];
+            mean_cell_total += cell_totals_c[c];
         }
-        mean_N_c /= C;
+        mean_cell_total /= num_cells;
 
-        // Now replce N_c by N
-        for (int c = 0; c < C; ++c)
+        // Now replace every N_c by the mean cell total
+        for (int c = 0; c < num_cells; ++c)
         {
-            N_c[c] = mean_N_c;
+            cell_totals_c[c] = mean_cell_total;
         }
     }
 
     // Cache library constants after optional normalisation, preserving the sum order.
-    std::vector<double> log_N_c(C);
-    double library_total = 0;
-    for (int c = 0; c < C; ++c) {
-        log_N_c[c] = std::log(N_c[c]);
-        library_total += N_c[c];
+    std::vector<double> log_cell_totals_c(num_cells); // log(N_c).
+    double sum_cell_totals = 0; // sum_c N_c, the total counts of the dataset.
+    for (int c = 0; c < num_cells; ++c) {
+        log_cell_totals_c[c] = std::log(cell_totals_c[c]);
+        sum_cell_totals += cell_totals_c[c];
     }
 
     // Grid of candidate gene variances, computed once here and shared with
     // get_gene_expression_level rather than being recomputed there. Each value must stay exactly
-    // vmin * exp(deltav * k), with deltav formed exactly as below, to keep the output bit-identical.
-    double deltav = std::log(vmax / vmin) / ((double)numbin - 1);
-    std::vector<double> v_grid(numbin);
-    for (int kk = 0; kk < numbin; ++kk)
-        v_grid[kk] = vmin * std::exp(deltav * kk);
+    // variance_min * exp(log_variance_step * b), with log_variance_step formed exactly as below, to keep the output bit-identical.
+    // The grid is equally spaced in log(v_g), as in SI Section S1.1.4.
+    double log_variance_step = std::log(variance_max / variance_min) / ((double)num_bins - 1);
+    std::vector<double> variance_grid_b(num_bins); // v_b, the candidate values of v_g.
+    for (int b = 0; b < num_bins; ++b)
+        variance_grid_b[b] = variance_min * std::exp(log_variance_step * b);
 
     // create output folder if it does not exist
     int mkdir_result = 0;
@@ -253,8 +256,8 @@ int main(int argc, char **argv)
 
     cmd_file << "# Sanity version: " << SANITY_VERSION << "\n";
 
-    static const char* vm_name[] = {"MARG", "MLE", "MAP", "EAP"};
-    cmd_file << "# Method: " << vm_name[v_method] << "\n";
+    static const char* variance_method_names[] = {"MARG", "MLE", "MAP", "EAP"};
+    cmd_file << "# Method: " << variance_method_names[variance_method] << "\n";
     if (bonsai_output_mode)
         cmd_file << "# Output mode: bonsai\n"
                     "# Output: Bonsai NPY; delta/d_delta: <f4; mu/variance: <f8; "
@@ -268,87 +271,87 @@ int main(int argc, char **argv)
     cmd_file.close();
 
     // -- Open files for writing --
-    std::unique_ptr<npy::NpyStreamWriter> out_delta_npy;
-    std::unique_ptr<npy::NpyStreamWriter> out_ddelta_npy;
-    std::unique_ptr<npy::NpyStreamWriter> out_mu_npy;
-    std::unique_ptr<npy::NpyStreamWriter> out_var_gene_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_log_fold_change_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_log_fold_change_error_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_mean_ltq_npy;
+    std::unique_ptr<npy::NpyStreamWriter> out_gene_variance_npy;
 
-    sanity::Writer out_exp_lev, out_d_exp_lev, out_mu, out_dmu, out_var_gene,
-        out_delta, out_ddelta, out_lik, out_gene, out_cell;
+    sanity::Writer out_ltq, out_ltq_error, out_mean_ltq, out_mean_ltq_error, out_gene_variance,
+        out_log_fold_change, out_log_fold_change_error, out_variance_likelihood, out_gene, out_cell;
 
     if (npy_output) {
-        out_delta_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy", C,
+        out_log_fold_change_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy", num_cells,
             bonsai_output_mode ? npy::NpyDType::Float32 : npy::NpyDType::Float64));
-        out_ddelta_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy", C,
+        out_log_fold_change_error_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy", num_cells,
             bonsai_output_mode ? npy::NpyDType::Float32 : npy::NpyDType::Float64));
-        out_mu_npy.reset(new npy::NpyStreamWriter(out_folder + "mu.npy", 1));
-        out_var_gene_npy.reset(new npy::NpyStreamWriter(out_folder + "variance.npy", 1));
+        out_mean_ltq_npy.reset(new npy::NpyStreamWriter(out_folder + "mu.npy", 1));
+        out_gene_variance_npy.reset(new npy::NpyStreamWriter(out_folder + "variance.npy", 1));
 
         out_gene.open(out_folder + "geneID.txt");
         // save gene names
-        for (int g = 0; g < G; g++)
+        for (int g = 0; g < num_genes; g++)
         {
-            out_gene << gene_names[g].c_str() << "\n";
+            out_gene << gene_names_g[g].c_str() << "\n";
         }
         out_cell.open(out_folder + "cellID.txt");
         // save cell names
-        for (int c = 0; c < C; c++)
+        for (int c = 0; c < num_cells; c++)
         {
-            out_cell << cell_names[c].c_str() << "\n";
+            out_cell << cell_names_c[c].c_str() << "\n";
         }
     }
     else {
         if (gzip_output) {out_suffix = ".gz";}
 
-        out_exp_lev.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
-        out_exp_lev << std::fixed << std::setprecision(6);
+        out_ltq.open(out_folder + "log_transcription_quotients.txt" + out_suffix);
+        out_ltq << std::fixed << std::setprecision(6);
 
-        out_d_exp_lev.open(out_folder + "ltq_error_bars.txt" + out_suffix);
-        out_d_exp_lev << std::fixed << std::setprecision(6);
+        out_ltq_error.open(out_folder + "ltq_error_bars.txt" + out_suffix);
+        out_ltq_error << std::fixed << std::setprecision(6);
 
-        out_exp_lev << "GeneID";
-        out_d_exp_lev << "GeneID";
-        for (int c = 0; c < C; c++)
+        out_ltq << "GeneID";
+        out_ltq_error << "GeneID";
+        for (int c = 0; c < num_cells; c++)
         {
-            out_exp_lev << "\t" << cell_names[c].c_str();
-            out_d_exp_lev << "\t" << cell_names[c].c_str();
+            out_ltq << "\t" << cell_names_c[c].c_str();
+            out_ltq_error << "\t" << cell_names_c[c].c_str();
         }
-        out_exp_lev << "\n";
-        out_d_exp_lev << "\n";
+        out_ltq << "\n";
+        out_ltq_error << "\n";
         if (print_extended_output)
         {
 
             out_gene.open(out_folder + "geneID.txt" + out_suffix);
             out_cell.open(out_folder + "cellID.txt" + out_suffix);
-            out_mu.open(out_folder + "mu.txt" + out_suffix);
-            out_mu << std::fixed << std::setprecision(6);
+            out_mean_ltq.open(out_folder + "mu.txt" + out_suffix);
+            out_mean_ltq << std::fixed << std::setprecision(6);
 
-            out_dmu.open(out_folder + "d_mu.txt" + out_suffix);
-            out_dmu << std::fixed << std::setprecision(6);
+            out_mean_ltq_error.open(out_folder + "d_mu.txt" + out_suffix);
+            out_mean_ltq_error << std::fixed << std::setprecision(6);
 
-            out_var_gene.open(out_folder + "variance.txt" + out_suffix);
-            out_var_gene << std::fixed << std::setprecision(6);
+            out_gene_variance.open(out_folder + "variance.txt" + out_suffix);
+            out_gene_variance << std::fixed << std::setprecision(6);
 
-            out_delta.open(out_folder + "delta.txt" + out_suffix);
-            out_delta << std::fixed << std::setprecision(6);
+            out_log_fold_change.open(out_folder + "delta.txt" + out_suffix);
+            out_log_fold_change << std::fixed << std::setprecision(6);
 
-            out_ddelta.open(out_folder + "d_delta.txt" + out_suffix);
-            out_ddelta << std::fixed << std::setprecision(6);
+            out_log_fold_change_error.open(out_folder + "d_delta.txt" + out_suffix);
+            out_log_fold_change_error << std::fixed << std::setprecision(6);
 
-            out_lik.open(out_folder + "likelihood.txt" + out_suffix);
-            out_lik << std::fixed << std::setprecision(6);
+            out_variance_likelihood.open(out_folder + "likelihood.txt" + out_suffix);
+            out_variance_likelihood << std::fixed << std::setprecision(6);
 
-            out_lik << "Variance";
-            for (int k = 0; k < (numbin); ++k)
+            out_variance_likelihood << "Variance";
+            for (int k = 0; k < (num_bins); ++k)
             {
-                out_lik << "\t" << v_grid[k];
+                out_variance_likelihood << "\t" << variance_grid_b[k];
             }
-            out_lik << "\n";
+            out_variance_likelihood << "\n";
 
             // save cell names
-            for (int c = 0; c < C; c++)
+            for (int c = 0; c < num_cells; c++)
             {
-                out_cell << cell_names[c].c_str() << "\n";
+                out_cell << cell_names_c[c].c_str() << "\n";
             }
         }
     }
@@ -356,49 +359,52 @@ int main(int argc, char **argv)
     std::exception_ptr output_failure;
     logging_debug("Fit gene expression levels");
     const std::clock_t begin = std::clock();
-    #pragma omp parallel num_threads(N_threads)
+    #pragma omp parallel num_threads(num_threads)
     {
         std::unique_ptr<sanity::DenseRowReader> thread_reader;
-        std::vector<double> n_c_g, fitting_workspace(C);
+        std::vector<double> umi_counts_c; // n_gc, the counts of gene g in each cell (SI Eq. 13).
+        std::vector<double> fitting_workspace_c(num_cells); // Scratch space reused by every fit of this thread.
+        std::vector<double> npy_log_fold_change_error_c; // epsilon_gc (standard deviation) of the current gene, written to d_delta.npy.
         #pragma omp for schedule(dynamic) ordered
-        for (int g = 0; g < G; ++g)
+        for (int g = 0; g < num_genes; ++g)
         {
             RowComputation result;
             sanity::FormattedOutput formatted;
-            std::vector<float> binary_delta, binary_error;
+            std::vector<float> binary_log_fold_change_c, binary_log_fold_change_error_c; // float32 delta_gc and epsilon_gc for the Bonsai output.
             std::exception_ptr local_failure;
             try
             {
                 if (!thread_reader) {
-                    thread_reader = std::make_unique<sanity::DenseRowReader>(in_file, in_file_extension, mtx_rows, tsv_offsets, C);
-                    n_c_g.resize(C);
+                    thread_reader = std::make_unique<sanity::DenseRowReader>(in_file, in_file_extension, mtx_rows_g, tsv_offsets_g, num_cells);
+                    umi_counts_c.resize(num_cells);
                 }
-                thread_reader->read_into(g, n_c_g.data());
-                result = get_gene_expression_level(n_c_g, N_c, n[g], v_grid, C, numbin, v_method, log_N_c, library_total, fitting_workspace);
+                thread_reader->read_into(g, umi_counts_c.data());
+                result = get_gene_expression_level(umi_counts_c, cell_totals_c, gene_totals_g[g], variance_grid_b, num_cells, num_bins, variance_method, log_cell_totals_c, sum_cell_totals, fitting_workspace_c);
                 if (!npy_output)
-                    formatted = sanity::format_output_row(result, gene_names[g], print_extended_output);
+                    formatted = sanity::format_output_row(result, gene_names_g[g], print_extended_output);
                 else
                 {
-                    if (!std::isfinite(result.mu) || !std::isfinite(result.var_gene))
+                    if (!std::isfinite(result.mean_ltq) || !std::isfinite(result.gene_variance))
                         throw std::runtime_error("Nonfinite NPY gene output");
                     if (bonsai_output_mode)
                     {
-                        binary_delta.resize(C);
-                        binary_error.resize(C);
+                        binary_log_fold_change_c.resize(num_cells);
+                        binary_log_fold_change_error_c.resize(num_cells);
                     }
-                    for (int c = 0; c < C; ++c)
+                    else npy_log_fold_change_error_c.resize(num_cells);
+                    for (int c = 0; c < num_cells; ++c)
                     {
-                        const double error = std::sqrt(result.var_delta[c]);
-                        if (!std::isfinite(result.delta[c]) || !std::isfinite(error))
+                        const double log_fold_change_error = std::sqrt(result.log_fold_change_error_sq_c[c]);
+                        if (!std::isfinite(result.log_fold_change_c[c]) || !std::isfinite(log_fold_change_error))
                             throw std::runtime_error("Nonfinite NPY cell output");
                         if (bonsai_output_mode)
                         {
-                            binary_delta[c] = static_cast<float>(result.delta[c]);
-                            binary_error[c] = static_cast<float>(error);
-                            if (!std::isfinite(binary_delta[c]) || !std::isfinite(binary_error[c]))
+                            binary_log_fold_change_c[c] = static_cast<float>(result.log_fold_change_c[c]);
+                            binary_log_fold_change_error_c[c] = static_cast<float>(log_fold_change_error);
+                            if (!std::isfinite(binary_log_fold_change_c[c]) || !std::isfinite(binary_log_fold_change_error_c[c]))
                                 throw std::runtime_error("NPY output exceeds float32 range");
                         }
-                        else result.var_delta[c] = error;
+                        else npy_log_fold_change_error_c[c] = log_fold_change_error;
                     }
                 }
             }
@@ -409,11 +415,11 @@ int main(int argc, char **argv)
             #pragma omp ordered
             {
                 // output esimated running time
-                if (g == (3 * N_threads - 1))
+                if (g == (3 * num_threads - 1))
                 {
                     std::clock_t end = std::clock();
                     double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-                    double estimated_running_time = (elapsed_secs / (3. * N_threads)) * G / N_threads;
+                    double estimated_running_time = (elapsed_secs / (3. * num_threads)) * num_genes / num_threads;
 
                     std::string estimated_running_time_str = "Estimated running time: ";
                     if (estimated_running_time > 86400)
@@ -445,7 +451,7 @@ int main(int argc, char **argv)
 
                 if (g % 1000 == 0 && g > 0)
                 {
-                    logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(G));
+                    logging_debug("Finished " + std::to_string(g) + " genes out of " + std::to_string(num_genes));
                 }
 
                 if (local_failure && !output_failure) output_failure = local_failure;
@@ -457,30 +463,30 @@ int main(int argc, char **argv)
                         if (npy_output) {
                             if (bonsai_output_mode)
                             {
-                                out_delta_npy->write_row(binary_delta);
-                                out_ddelta_npy->write_row(binary_error);
+                                out_log_fold_change_npy->write_row(binary_log_fold_change_c);
+                                out_log_fold_change_error_npy->write_row(binary_log_fold_change_error_c);
                             }
                             else
                             {
-                                out_delta_npy->write_row(result.delta);
-                                out_ddelta_npy->write_row(result.var_delta);
+                                out_log_fold_change_npy->write_row(result.log_fold_change_c);
+                                out_log_fold_change_error_npy->write_row(npy_log_fold_change_error_c);
                             }
-                            out_mu_npy->write_row(&result.mu, 1);
-                            out_var_gene_npy->write_row(&result.var_gene, 1);
+                            out_mean_ltq_npy->write_row(&result.mean_ltq, 1);
+                            out_gene_variance_npy->write_row(&result.gene_variance, 1);
                         }
                         else
                         {
-                            out_exp_lev.write_raw(formatted.ltq);
-                            out_d_exp_lev.write_raw(formatted.ltq_error);
+                            out_ltq.write_raw(formatted.ltq);
+                            out_ltq_error.write_raw(formatted.ltq_error);
                             if (print_extended_output)
                             {
-                                out_delta.write_raw(formatted.delta);
-                                out_ddelta.write_raw(formatted.delta_error);
-                                out_mu.write_raw(formatted.mu);
-                                out_var_gene.write_raw(formatted.variance);
-                                out_dmu.write_raw(formatted.mu_error);
-                                out_lik.write_raw(formatted.likelihood);
-                                out_gene.write_raw(gene_names[g] + "\n");
+                                out_log_fold_change.write_raw(formatted.log_fold_change);
+                                out_log_fold_change_error.write_raw(formatted.log_fold_change_error);
+                                out_mean_ltq.write_raw(formatted.mean_ltq);
+                                out_gene_variance.write_raw(formatted.gene_variance);
+                                out_mean_ltq_error.write_raw(formatted.mean_ltq_error);
+                                out_variance_likelihood.write_raw(formatted.variance_likelihood);
+                                out_gene.write_raw(gene_names_g[g] + "\n");
                             }
                         }
                     }
@@ -491,301 +497,317 @@ int main(int argc, char **argv)
     }
 
     if (output_failure) std::rethrow_exception(output_failure);
-    for (auto* writer : {out_delta_npy.get(), out_ddelta_npy.get(), out_mu_npy.get(), out_var_gene_npy.get()})
+    for (auto* writer : {out_log_fold_change_npy.get(), out_log_fold_change_error_npy.get(), out_mean_ltq_npy.get(), out_gene_variance_npy.get()})
         if (writer) writer->close();
-    for (auto* writer : {&out_exp_lev, &out_d_exp_lev, &out_mu, &out_dmu, &out_var_gene,
-                         &out_delta, &out_ddelta, &out_lik, &out_gene, &out_cell})
+    for (auto* writer : {&out_ltq, &out_ltq_error, &out_mean_ltq, &out_mean_ltq_error, &out_gene_variance,
+                         &out_log_fold_change, &out_log_fold_change_error, &out_variance_likelihood, &out_gene, &out_cell})
         writer->close();
     logging_debug("Finished fitting all genes");
 
     return 0;
 }
 
-RowComputation get_gene_expression_level(const std::vector<double> &n_c, const std::vector<double> &N_c,
-                                         double n, const std::vector<double> &v_grid, int C, int numbin,
-                                         int v_method, const std::vector<double>& log_N_c,
-                                         double library_total, std::vector<double>& fitting_workspace)
+// "SI" is the Supplementary Information of Breda, Zavolan & van Nimwegen, Nat. Biotechnol. 2021.
+// Index letters at the end of a name give what an array runs over: g = genes, c = cells, b = grid points of the gene variance v_g.
+// Where the SI has n_g + 1 (Eqs. 16, 19, 26, 31, 44, 46) this code uses n_g.
+// This is intentional: the prior over alpha_g differs from the one in the SI.
+RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c, const std::vector<double> &cell_totals_c,
+                                         double gene_total, const std::vector<double> &variance_grid_b, int num_cells, int num_bins,
+                                         int variance_method, const std::vector<double>& log_cell_totals_c,
+                                         double sum_cell_totals, std::vector<double>& fitting_workspace_c)
 {
-    // n = total counts for the gene
-    // n_c = counts for the gene in each cell
-    // N_c = total counts for each cell
-    // C = number of cells
-    // numbin = number of bins for v
-    int i, k;
-    double beta, L, ldet, q, delsq;
-    double prev_q = 0.0;
-    double *f = new double[C];
-    double **delta_v = new double *[numbin];
-    double *delta_scratch = v_method > 0 ? new double[C] : nullptr;
-    double **sig2_delta_v = new double *[numbin]();
+    // umi_counts_c = n_gc, the counts of this gene in each cell.
+    // cell_totals_c = N_c, the total counts of each cell.
+    // gene_total = n_g, the total counts of this gene.
+    // variance_grid_b = v_b, the candidate values of the gene variance v_g (SI S1.1.4).
+    // num_cells = C and num_bins = B.
+    int c, b;
+    double inv_total_times_variance; // 1/(n_g v_b); the reciprocal of total_times_variance in FitFrac.cpp.
+    double log_likelihood; // L(v_b), the log marginal likelihood of the current grid point (SI Eq. 32).
+    double log_det_curvature; // log det(M_g/n_g) (SI Eqs. 31, 33); the constant C*log(n_g) is dropped because it does not depend on v_g.
+    double log_weighted_total; // q_g = log sum_c N_c exp(delta_gc) (SI Eq. 22).
+    double sum_log_fold_change_sq; // sum_c delta_gc^2, from the Gaussian prior term of Eq. 20.
+    double previous_log_weighted_total = 0.0; // q_g of the previous grid point, the starting guess for the next fit.
+    double *fractions_c = new double[num_cells]; // f_gc, the fitted fraction of the gene's counts expected in each cell (SI Eq. 23).
+    double **log_fold_change_bc = new double *[num_bins]; // delta*_gc(v_b) at every grid point (SI Eq. 28), kept for MARG.
+    double *log_fold_change_buffer_c = variance_method > 0 ? new double[num_cells] : nullptr; // Reusable delta*_gc for the methods that keep one bin.
+    double **log_fold_change_error_sq_bc = new double *[num_bins](); // var(delta_gc)(v_b) at every grid point (SI Eq. 37), kept for MARG.
     // Fixed-bin methods retain only the fitted scalar; reconstruct cell values after selection.
-    std::vector<double> fitted_q(numbin);
-    std::vector<double> lik(numbin, -1.0);
-    std::vector<double> delta(C, 0.0), var_delta(C, 0.0);
-    double var_mu, var_gene;
+    std::vector<double> log_weighted_total_b(num_bins); // q_g(v_b) at every grid point.
+    std::vector<double> log_likelihood_b(num_bins, -1.0); // L_b = log P(n_g | v_b) (SI S1.1.4).
+    std::vector<double> log_fold_change_c(num_cells, 0.0); // The reported log fold change <delta_gc> (SI Eq. 39).
+    std::vector<double> log_fold_change_error_sq_c(num_cells, 0.0); // The reported error bar squared, epsilon_gc^2 (SI Eq. 42).
+    double mean_ltq_error_sq; // (delta mu_g)^2, the variance of the mean LTQ (SI Eq. 47).
+    double gene_variance; // The reported v_g.
 
-    for (k = 0; k < numbin; ++k)
+    for (b = 0; b < num_bins; ++b)
     {
-        delta_v[k] = v_method == 0 ? new double[C] : delta_scratch;
-        if (v_method == 0) sig2_delta_v[k] = new double[C];
+        log_fold_change_bc[b] = variance_method == 0 ? new double[num_cells] : log_fold_change_buffer_c;
+        if (variance_method == 0) log_fold_change_error_sq_bc[b] = new double[num_cells];
     }
 
-    /*** To compute var of delta ***/
-    double *sig2_delta_c = new double[C];
-    double *sig2_delta_num = new double[C];
-    double *sig2_delta_den2 = new double[C];
-    double sig2_delta_den1;
+    /*** To compute the variance of the log fold change ***/
+    // Together these give the diagonal of the inverse of M_g in closed form (SI Eqs. 35-37):
+    // var(delta_gc) = inv_curv_diag_num_c / (inv_curv_diag_den1 * inv_curv_diag_den2_c).
+    double *inv_curv_diag_rank1_c = new double[num_cells]; // n_g f_gc^2 / (n_g f_gc + 1/v_g), one term of each sum over cells in Eq. 37.
+    double *inv_curv_diag_num_c = new double[num_cells]; // The numerator of Eq. 37: den1 + rank1_c, i.e. the sum with cell c removed.
+    double *inv_curv_diag_den2_c = new double[num_cells]; // n_g f_gc + 1/v_g, the diagonal of M_g before the rank-one correction (Eq. 31).
+    double inv_curv_diag_den1; // 1 - sum_c rank1_c, the factor from the matrix determinant lemma (Eq. 33).
 
-    double *mu_v = new double[numbin];
-    double Lmax = -1e+100;
-    int Lmax_ind = 0;
-    double v;
+    double *mean_ltq_b = new double[num_bins]; // mu_g(v_b) = psi(n_g) - q_g(v_b) at every grid point (SI Eq. 44).
+    double max_log_likelihood = -1e+100; // Maximum of L_b over the grid.
+    int max_likelihood_bin = 0; // Grid point at which L_b is maximal (the MLE).
+    double bin_variance; // v_b, the gene variance at the current grid point.
 
-    auto calculate_uncertainty = [&](const double* fractions, const double* bin_delta,
-                                     double variance, double* output) {
-        /* compute nf^2/(nf+1/sigma^2) for each c */
-        const double inv_v = 1.0 / variance;
-        for (i = 0; i < C; ++i)
+    auto compute_log_fold_change_error_sq = [&](const double* given_fractions_c, const double* given_log_fold_change_c,
+                                                double given_variance, double* error_sq_out_c) {
+        // rank1_c = n_g f_gc^2 / (n_g f_gc + 1/v_g) for each cell c.
+        const double inv_variance = 1.0 / given_variance;
+        for (c = 0; c < num_cells; ++c)
         {
-            sig2_delta_c[i] = n * fractions[i] * fractions[i] / (n * fractions[i] + inv_v);
+            inv_curv_diag_rank1_c[c] = gene_total * given_fractions_c[c] * given_fractions_c[c] / (gene_total * given_fractions_c[c] + inv_variance);
         }
-        /* Compute the full sum of the denominator in Delta_delta and the second tern in the denominator*/
-        sig2_delta_den1 = 1.0;
-        for (i = 0; i < C; ++i)
+        // den1 is one minus the full sum of the rank-one terms; den2_c is the diagonal of M_g.
+        inv_curv_diag_den1 = 1.0;
+        for (c = 0; c < num_cells; ++c)
         {
-            sig2_delta_den1 -= sig2_delta_c[i];
-            sig2_delta_den2[i] = n * fractions[i] + inv_v;
+            inv_curv_diag_den1 -= inv_curv_diag_rank1_c[c];
+            inv_curv_diag_den2_c[c] = gene_total * given_fractions_c[c] + inv_variance;
         }
-        /* compute the different terms in the numerator : remove the \tilde{c} terms */
-        for (i = 0; i < C; i++)
+        // The numerator removes the term of cell c from the sum.
+        for (c = 0; c < num_cells; c++)
         {
-            sig2_delta_num[i] = sig2_delta_den1 + sig2_delta_c[i];
+            inv_curv_diag_num_c[c] = inv_curv_diag_den1 + inv_curv_diag_rank1_c[c];
         }
-        /* compute sig2_delta */
-        for (i = 0; i < C; ++i)
+        // The variance of the log fold change of each cell.
+        for (c = 0; c < num_cells; ++c)
         {
-            output[i] = sig2_delta_num[i] / (sig2_delta_den1 * sig2_delta_den2[i]);
+            error_sq_out_c[c] = inv_curv_diag_num_c[c] / (inv_curv_diag_den1 * inv_curv_diag_den2_c[c]);
         }
 
-        // fix computation of asymmetric sig2_delta for zero count
-        for (i = 0; i < C; ++i)
+        // fix computation of asymmetric variance for zero count (SI Eq. 38)
+        for (c = 0; c < num_cells; ++c)
         {
-            if (n_c[i] <= 0.5)
+            if (umi_counts_c[c] <= 0.5)
             {
-                output[i] = get_epsilon_2(bin_delta[i], variance, n, fractions[i]);
+                error_sq_out_c[c] = zero_count_log_fold_change_error_sq(given_log_fold_change_c[c], given_variance, gene_total, given_fractions_c[c]);
             }
         }
     };
 
-    const double psi0 = Psi_0(n), psi1 = Psi_1(n);
-    for (k = 0; k < numbin; ++k)
+    const double digamma_total = digamma(gene_total); // psi(n_g) (SI Eq. 44).
+    const double trigamma_total = trigamma(gene_total); // psi_1(n_g), the variance of log(alpha_g) (SI Eq. 46).
+    for (b = 0; b < num_bins; ++b)
     {
-        v = v_grid[k];
-        beta = 1.0 / (n * v);
-        q = fitfrac(f, n_c, n, v, C, N_c, prev_q, log_N_c.data(), library_total, fitting_workspace.data());
-        prev_q = q;
-        fitted_q[k] = q;
-        mu_v[k] = psi0 - q; /*** equation (85) ***/
+        bin_variance = variance_grid_b[b];
+        inv_total_times_variance = 1.0 / (gene_total * bin_variance);
+        log_weighted_total = fit_fractions(fractions_c, umi_counts_c, gene_total, bin_variance, num_cells, cell_totals_c, previous_log_weighted_total, log_cell_totals_c.data(), sum_cell_totals, fitting_workspace_c.data());
+        previous_log_weighted_total = log_weighted_total;
+        log_weighted_total_b[b] = log_weighted_total;
+        mean_ltq_b[b] = digamma_total - log_weighted_total; /*** SI Eq. 44 ***/
 
-        delsq = 0;
-        L = -0.5 * ((double)C) * std::log(v); // (56) 1st term
-        for (i = 0; i < C; ++i)
+        sum_log_fold_change_sq = 0;
+        log_likelihood = -0.5 * ((double)num_cells) * std::log(bin_variance); // 1st term of SI Eq. 20
+        for (c = 0; c < num_cells; ++c)
         {
-            delta_v[k][i] = std::log(f[i]) - log_N_c[i] + q; // equation (67)
-            L += n_c[i] * delta_v[k][i];                 // data term sum_c n_c*delta_c, as in Equation 19 of Sanity paper SI
-            delsq += delta_v[k][i] * delta_v[k][i];
+            log_fold_change_bc[b][c] = std::log(fractions_c[c]) - log_cell_totals_c[c] + log_weighted_total; // SI Eq. 28
+            log_likelihood += umi_counts_c[c] * log_fold_change_bc[b][c];                 // data term sum_c n_gc*delta_gc, SI Eq. 20
+            sum_log_fold_change_sq += log_fold_change_bc[b][c] * log_fold_change_bc[b][c];
         }
-        L -= delsq / (2 * v); // (56) 2nd term
-        L -= n * q;     // 4th term in equation (56)
+        log_likelihood -= sum_log_fold_change_sq / (2 * bin_variance); // 2nd term of SI Eq. 20
+        log_likelihood -= gene_total * log_weighted_total;     // last term of SI Eq. 20, using sum_c N_c exp(delta_gc) = exp(q_g)
 
-        // get the determinant of the matrix
-        ldet = 0.0;
-        for (i = 0; i < C; ++i)
+        // get the determinant of the matrix (SI Eq. 33)
+        log_det_curvature = 0.0;
+        for (c = 0; c < num_cells; ++c)
         {
-            ldet += (f[i] * f[i]) / (f[i] + beta);
-        }
-
-        ldet = std::log(1 - ldet);
-        for (i = 0; i < C; ++i)
-        {
-            ldet += std::log(f[i] + beta);
-        }
-        L -= 0.5 * ldet;
-        lik[k] = L;
-
-        if (L > Lmax)
-        {
-            Lmax = L;
-            Lmax_ind = k;
+            log_det_curvature += (fractions_c[c] * fractions_c[c]) / (fractions_c[c] + inv_total_times_variance);
         }
 
-        if (v_method == 0)
+        log_det_curvature = std::log(1 - log_det_curvature);
+        for (c = 0; c < num_cells; ++c)
         {
-            calculate_uncertainty(f, delta_v[k], v, sig2_delta_v[k]);
+            log_det_curvature += std::log(fractions_c[c] + inv_total_times_variance);
+        }
+        log_likelihood -= 0.5 * log_det_curvature; // SI Eq. 32
+        log_likelihood_b[b] = log_likelihood;
+
+        if (log_likelihood > max_log_likelihood)
+        {
+            max_log_likelihood = log_likelihood;
+            max_likelihood_bin = b;
+        }
+
+        if (variance_method == 0)
+        {
+            compute_log_fold_change_error_sq(fractions_c, log_fold_change_bc[b], bin_variance, log_fold_change_error_sq_bc[b]);
         }
     } // end v bins loop
 
-    // get normalized likelihood from loglikelihood
-    double sum_L;
-    sum_L = 0.0;
-    for (k = 0; k < numbin; k++)
+    // get normalized likelihood from loglikelihood (SI Eq. 34)
+    std::vector<double> variance_likelihood_b(num_bins); // P(v_b | n_g), the posterior over the grid (SI Eq. 34); written to likelihood.txt.
+    double likelihood_sum; // The normalisation, sum_b exp(L_b).
+    likelihood_sum = 0.0;
+    for (b = 0; b < num_bins; b++)
     {
-        lik[k] -= Lmax;
-        lik[k] = std::exp(lik[k]);
-        sum_L += lik[k];
+        variance_likelihood_b[b] = log_likelihood_b[b] - max_log_likelihood;
+        variance_likelihood_b[b] = std::exp(variance_likelihood_b[b]);
+        likelihood_sum += variance_likelihood_b[b];
     }
-    for (k = 0; k < numbin; k++)
+    for (b = 0; b < num_bins; b++)
     {
-        lik[k] /= sum_L;
+        variance_likelihood_b[b] /= likelihood_sum;
     }
 
-    int vindex = 0;
-    if(v_method ==1){
-        vindex = Lmax_ind;
+    int selected_bin = 0; // Grid point chosen by the MLE, MAP or EAP methods.
+    if(variance_method ==1){
+        selected_bin = max_likelihood_bin;
     }
-    else if(v_method == 2){
+    else if(variance_method == 2){
         // Dividing the normalised likelihood by v applies an implicit 1/v (Jeffreys) prior on the
         // gene variance. This is the only prior in effect anywhere in this computation.
-        double mapmax = -1e+100;
-        for (k = 0; k < numbin; k++)    {
-            double curv = v_grid[k];
+        double max_posterior = -1e+100;
+        for (b = 0; b < num_bins; b++)    {
+            double grid_variance = variance_grid_b[b];
 
-            if (lik[k]/curv > mapmax)
+            if (variance_likelihood_b[b]/grid_variance > max_posterior)
             {
-                mapmax = lik[k]/curv;
-                vindex = k;
+                max_posterior = variance_likelihood_b[b]/grid_variance;
+                selected_bin = b;
             }
         }
     }
-    else if(v_method == 3){
-        double postmean = 0.0;
-        for (k = 0; k < numbin; k++)    {
-            double curv = v_grid[k];
-            postmean += lik[k] * curv;
+    else if(variance_method == 3){
+        double posterior_mean_variance = 0.0;
+        for (b = 0; b < num_bins; b++)    {
+            double grid_variance = variance_grid_b[b];
+            posterior_mean_variance += variance_likelihood_b[b] * grid_variance;
         }
-        double mindist = 1e+100;
-        for (k = 0; k < numbin; k++)    {
-            double curv = v_grid[k];
-            if (std::fabs(curv - postmean) < mindist)
+        double min_distance = 1e+100;
+        for (b = 0; b < num_bins; b++)    {
+            double grid_variance = variance_grid_b[b];
+            if (std::fabs(grid_variance - posterior_mean_variance) < min_distance)
             {
-                mindist = std::fabs(curv - postmean);
-                vindex = k;
+                min_distance = std::fabs(grid_variance - posterior_mean_variance);
+                selected_bin = b;
             }
         }
     }
 
-    // Average delta, and mu
-    double mu = 0.0;
-    for (k = 0; k < numbin; k++)
+    // Average the mean LTQ over the variance grid (SI Eq. 45)
+    double mean_ltq = 0.0; // mu_g, the mean LTQ log(alpha_g) of the gene (SI S1.1.7).
+    for (b = 0; b < num_bins; b++)
     {
-        mu += lik[k] * mu_v[k];
+        mean_ltq += variance_likelihood_b[b] * mean_ltq_b[b];
     }
 
-    // Compute var_delta = < (mu - <mu>)^2 > + <d_mu>
-    var_mu = psi1;
-    for (k = 0; k < numbin; k++)
+    // Compute (delta mu_g)^2 = psi_1 + < (mu - <mu>)^2 > (SI Eq. 47)
+    mean_ltq_error_sq = trigamma_total;
+    for (b = 0; b < num_bins; b++)
     {
-        var_mu += lik[k] * (mu_v[k] - mu) * (mu_v[k] - mu);
+        mean_ltq_error_sq += variance_likelihood_b[b] * (mean_ltq_b[b] - mean_ltq) * (mean_ltq_b[b] - mean_ltq);
     }
 
-    if (v_method == 0)  // MARG
+    if (variance_method == 0)  // MARG
     {
-        // Compute <delta> = int p(v)*delta(v) dv
-        for (i = 0; i < C; i++)
+        // Compute <delta> = int p(v)*delta(v) dv (SI Eq. 39)
+        for (c = 0; c < num_cells; c++)
         {
-            delta[i] = 0.0;
-            for (k = 0; k < numbin; k++)
+            log_fold_change_c[c] = 0.0;
+            for (b = 0; b < num_bins; b++)
             {
-                delta[i] += lik[k] * delta_v[k][i];
+                log_fold_change_c[c] += variance_likelihood_b[b] * log_fold_change_bc[b][c];
             }
         }
-        // Compute var_delta = < (delta - <delta>)^2 > + <sig2_delta^2>
-        for (i = 0; i < C; i++)
+        // Compute epsilon^2 = < (delta - <delta>)^2 > + <var(delta)> (SI Eq. 42)
+        for (c = 0; c < num_cells; c++)
         {
-            var_delta[i] = 0.0;
-            for (k = 0; k < numbin; k++)
+            log_fold_change_error_sq_c[c] = 0.0;
+            for (b = 0; b < num_bins; b++)
             {
-                var_delta[i] += lik[k] * (delta_v[k][i] - delta[i]) * (delta_v[k][i] - delta[i]) + lik[k] * sig2_delta_v[k][i];
+                log_fold_change_error_sq_c[c] += variance_likelihood_b[b] * (log_fold_change_bc[b][c] - log_fold_change_c[c]) * (log_fold_change_bc[b][c] - log_fold_change_c[c]) + variance_likelihood_b[b] * log_fold_change_error_sq_bc[b][c];
             }
         }
-        // var_gene
-        var_gene = 0.0;
-        for (k = 0; k < numbin; ++k)
+        // The reported v_g is the posterior mean of the variance.
+        gene_variance = 0.0;
+        for (b = 0; b < num_bins; ++b)
         {
-            v = v_grid[k];
-            var_gene += v * lik[k];
+            bin_variance = variance_grid_b[b];
+            gene_variance += bin_variance * variance_likelihood_b[b];
         }
     }
 
-    if (v_method > 0)
+    if (variance_method > 0)
     {
         // Store the gene-variance that maximizes the likelihood:
-        var_gene = v_grid[vindex];
+        gene_variance = variance_grid_b[selected_bin];
         // And then also the corresponding values for the LTQs etc.
-        mu = mu_v[vindex];
-        var_mu = psi1;
-        fractions_at_q(f, n_c, n, var_gene, C, N_c, fitted_q[vindex], log_N_c.data());
-        for (i = 0; i < C; i++)
+        mean_ltq = mean_ltq_b[selected_bin];
+        mean_ltq_error_sq = trigamma_total;
+        reconstruct_fractions(fractions_c, umi_counts_c, gene_total, gene_variance, num_cells, cell_totals_c, log_weighted_total_b[selected_bin], log_cell_totals_c.data());
+        for (c = 0; c < num_cells; c++)
         {
-            delta[i] = std::log(f[i]) - log_N_c[i] + fitted_q[vindex];
+            log_fold_change_c[c] = std::log(fractions_c[c]) - log_cell_totals_c[c] + log_weighted_total_b[selected_bin];
         }
-        calculate_uncertainty(f, delta.data(), var_gene, var_delta.data());
+        compute_log_fold_change_error_sq(fractions_c, log_fold_change_c.data(), gene_variance, log_fold_change_error_sq_c.data());
     }
 
-    delete[] f;
-    for (k = 0; k < numbin; ++k)
+    delete[] fractions_c;
+    for (b = 0; b < num_bins; ++b)
     {
-        if (v_method == 0) delete[] delta_v[k];
-        delete[] sig2_delta_v[k];
+        if (variance_method == 0) delete[] log_fold_change_bc[b];
+        delete[] log_fold_change_error_sq_bc[b];
     }
-    delete[] delta_scratch;
-    delete[] delta_v;
-    delete[] sig2_delta_v;
-    delete[] sig2_delta_c;
-    delete[] sig2_delta_num;
-    delete[] sig2_delta_den2;
-    delete[] mu_v;
+    delete[] log_fold_change_buffer_c;
+    delete[] log_fold_change_bc;
+    delete[] log_fold_change_error_sq_bc;
+    delete[] inv_curv_diag_rank1_c;
+    delete[] inv_curv_diag_num_c;
+    delete[] inv_curv_diag_den2_c;
+    delete[] mean_ltq_b;
 
     RowComputation result;
-    result.mu = mu;
-    result.var_mu = var_mu;
-    result.delta = delta;
-    result.var_delta = var_delta;
-    result.var_gene = var_gene;
-    result.lik = lik;
+    result.mean_ltq = mean_ltq;
+    result.mean_ltq_error_sq = mean_ltq_error_sq;
+    result.log_fold_change_c = log_fold_change_c;
+    result.log_fold_change_error_sq_c = log_fold_change_error_sq_c;
+    result.gene_variance = gene_variance;
+    result.variance_likelihood_b = variance_likelihood_b;
     
     return result;
 }
 
-double get_epsilon_2(double d, double v, double n, double f)
+// Zero-count error bar (SI Eq. 38): the squared displacement epsilon_gc^2 above delta*_gc at which the log-likelihood has dropped by 1/2.
+// log_fold_change = delta*_gc, gene_variance = v_g, gene_total = n_g and fraction = f_gc.
+double zero_count_log_fold_change_error_sq(double log_fold_change, double gene_variance, double gene_total, double fraction)
 {
     // Find the positive displacement whose log-likelihood drop is 1/2.
     // Keep log(1 + f*(exp(e)-1)) rather than linearizing the logarithm.
-    auto drop = [&](double e) {
-        const double logarithm = e < 700 ? std::log1p(f * std::expm1(e))
-                                        : e + std::log(f + (1 - f) * std::exp(-e));
-        return e * (2 * d + e) / (2 * v) + n * logarithm;
+    auto log_likelihood_drop = [&](double displacement) { // sigma_gc in SI Eq. 38
+        const double logarithm = displacement < 700 ? std::log1p(fraction * std::expm1(displacement))
+                                        : displacement + std::log(fraction + (1 - fraction) * std::exp(-displacement));
+        return displacement * (2 * log_fold_change + displacement) / (2 * gene_variance) + gene_total * logarithm;
     };
     double lo = 0, hi = 1;
     // The upper bound for the linearized formula need not bracket this root.
-    while (drop(hi) < 0.5)
+    while (log_likelihood_drop(hi) < 0.5)
     {
         hi *= 2;
         if (!std::isfinite(hi)) throw std::runtime_error("Cannot bracket zero-count uncertainty");
     }
     for (int iteration = 0; iteration < 200; ++iteration)
     {
-        const double e = (lo + hi) / 2;
-        const double value = drop(e);
+        const double displacement = (lo + hi) / 2;
+        const double value = log_likelihood_drop(displacement);
         if (!std::isfinite(value)) throw std::runtime_error("Nonfinite zero-count likelihood");
-        if (std::fabs(value - 0.5) <= 1e-7) return e * e;
-        if (value < 0.5) lo = e; else hi = e;
-        if (hi - lo <= 1e-14 * std::max(1.0, hi)) return e * e;
+        if (std::fabs(value - 0.5) <= 1e-7) return displacement * displacement;
+        if (value < 0.5) lo = displacement; else hi = displacement;
+        if (hi - lo <= 1e-14 * std::max(1.0, hi)) return displacement * displacement;
     }
     throw std::runtime_error("Zero-count uncertainty did not converge");
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &N_threads, bool &print_extended_output, double &vmin, double &vmax, int &numbin, bool &no_norm, int &v_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, int &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
 {
 
     // Running with no arguments at all is a usage error, not a help request: main prints the usage
@@ -820,7 +842,7 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
 
     std::string extended_output("false");
     std::string no_norm_str("false");
-    std::string v_method_str("MAP");
+    std::string variance_method_str("MAP");
     std::string to_find[][2] = {{"-f", "--file"},
                              {"-d", "--destination"},
                              {"-n", "--n_threads"},
@@ -902,15 +924,15 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 if (j == 1)
                     out_folder = argv[idx + 1];
                 if (j == 2)
-                    N_threads = std::atoi(argv[idx + 1]);
+                    num_threads = std::atoi(argv[idx + 1]);
                 if (j == 3)
                     extended_output = argv[idx + 1];
                 if (j == 4)
-                    vmin = std::atof(argv[idx + 1]);
+                    variance_min = std::atof(argv[idx + 1]);
                 if (j == 5)
-                    vmax = std::atof(argv[idx + 1]);
+                    variance_max = std::atof(argv[idx + 1]);
                 if (j == 6)
-                    numbin = std::atoi(argv[idx + 1]);
+                    num_bins = std::atoi(argv[idx + 1]);
                 if (j == 7)
                     gene_name_file = argv[idx + 1];
                 if (j == 8)
@@ -918,7 +940,7 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 if (j == 9)
                     no_norm_str = argv[idx + 1];
                 if (j == 10)
-                    v_method_str = argv[idx + 1];
+                    variance_method_str = argv[idx + 1];
                 // add '/' to out_folder if not already. `-d ""` gives an empty string, on which
                 // back() would be undefined behaviour, so treat it as the current directory.
                 if (j == 1)
@@ -971,20 +993,20 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     if (no_norm_str == "true" || no_norm_str == "1")
         no_norm = true;
 
-    if(v_method_str == "MLE" || v_method_str == "mle" || v_method_str == "MaxLikelihood" || v_method_str == "maxlikelihood" || v_method_str == "max_likelihood"){
-        v_method = 1;
+    if(variance_method_str == "MLE" || variance_method_str == "mle" || variance_method_str == "MaxLikelihood" || variance_method_str == "maxlikelihood" || variance_method_str == "max_likelihood"){
+        variance_method = 1;
         logging_debug("Outputting results for the prior variance (v_g) that maximizes the likelihood (MLE).");
     }
-    else if(v_method_str == "MAP" || v_method_str == "map" || v_method_str == "MaxAPosterior" || v_method_str == "maxaposterior" || v_method_str == "max_a_posterior"){
-        v_method = 2;
+    else if(variance_method_str == "MAP" || variance_method_str == "map" || variance_method_str == "MaxAPosterior" || variance_method_str == "maxaposterior" || variance_method_str == "max_a_posterior"){
+        variance_method = 2;
         logging_debug("Outputting results for the prior variance (v_g) that maximizes the posterior (MAP).");
     }
-    else if(v_method_str == "EAP" || v_method_str == "eap" || v_method_str == "ExpectedAPosterior" || v_method_str == "expectedaposterior" || v_method_str == "expected_a_posterior"){
-        v_method = 3;
+    else if(variance_method_str == "EAP" || variance_method_str == "eap" || variance_method_str == "ExpectedAPosterior" || variance_method_str == "expectedaposterior" || variance_method_str == "expected_a_posterior"){
+        variance_method = 3;
         logging_debug("Outputting results for the expected value of the prior variance (v_g) over the posterior (EAP).");
     }
-    else if(v_method_str == "MARG" || v_method_str == "marg" || v_method_str == "marginalizing"){
-        v_method = 0;
+    else if(variance_method_str == "MARG" || variance_method_str == "marg" || variance_method_str == "marginalizing"){
+        variance_method = 0;
         logging_debug("Outputting results for the prior variance (v_g) marginalizing over v.");
     }
     else {
@@ -998,7 +1020,7 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
     if (bonsai_output_mode)
     {
-        if (gzip_output || npy_output || v_method != 2)
+        if (gzip_output || npy_output || variance_method != 2)
         {
             logging_debug("Bonsai output mode writes NPY and requires MAP; omit gzip/NPY flags and use -v_m MAP.");
             return ERROR;

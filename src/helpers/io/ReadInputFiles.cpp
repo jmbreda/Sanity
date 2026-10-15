@@ -1,5 +1,5 @@
-#include "ReadInputFiles.h"
-#include "FastMtxReader.hpp"
+#include "helpers/io/ReadInputFiles.h"
+#include "helpers/io/FastMtxReader.hpp"
 #include <chrono>
 #include <omp.h>
 #include <atomic>
@@ -212,20 +212,20 @@ bool FileReader::gzipped() const
 /*** end of FileReader class implementation ***/
 
 
-void Get_G_C_UMIcountMatrix(std::string in_file,
-                            int &N_rows,
-                            int &G,
-                            int &C,
-                            std::vector<std::streampos> &tsv_offsets,
-                            std::vector<double> &N_c,
-                            std::vector<double> &n,
-                            std::vector<std::string> &cell_names,
-                            std::vector<std::string> &gene_names,
-                            int N_threads)
+void index_tsv_counts(std::string in_file,
+                            int &num_input_rows,
+                            int &num_genes,
+                            int &num_cells,
+                            std::vector<std::streampos> &tsv_offsets_g,
+                            std::vector<double> &cell_totals_c,
+                            std::vector<double> &gene_totals_g,
+                            std::vector<std::string> &cell_names_c,
+                            std::vector<std::string> &gene_names_g,
+                            int num_threads)
 {
 
-    FileReader infp(in_file);
-    if (!infp.is_open())
+    FileReader reader(in_file);
+    if (!reader.is_open())
     {
         fprintf(stderr, "Cannot open input file %s\n", in_file.c_str());
         exit(EXIT_FAILURE);
@@ -235,16 +235,16 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
     // Commas and spaces are part of a field, not separators, so that gene and cell
     // names may contain them.
     // Count cell. First line should have the names of the columns (cell names)
-    char *ss = infp.getline();
-    if (ss == nullptr)
+    char *line = reader.getline();
+    if (line == nullptr)
     {
         fprintf(stderr, "Error: Unable to read header line from %s\n", in_file.c_str());
         exit(EXIT_FAILURE);
     }
     char *saveptr = nullptr;
 
-    char *token = strtok_r(ss, "\t\r\n", &saveptr);
-    cell_names.clear();
+    char *token = strtok_r(line, "\t\r\n", &saveptr);
+    cell_names_c.clear();
     if (token == NULL)
     {
         fprintf(stderr, "Error: header line missing first field in %s\n", in_file.c_str());
@@ -266,103 +266,104 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         {
             name.erase(pos, 1);
         }
-        cell_names.push_back(name);
+        cell_names_c.push_back(name);
         token = strtok_r(NULL, "\t\r\n", &saveptr);
     }
 
     // PASS 1: Sequential scan to record all line offsets
     std::vector<long long> line_offsets;
-    int N_fields_first_row = -1;
-    N_rows = 0;
+    int num_fields_first_row = -1;
+    num_input_rows = 0;
 
     while (true)
     {
-        long long row_offset = infp.tellg();
-        ss = infp.getline();
-        if (ss == nullptr)
+        long long row_offset = reader.tellg();
+        line = reader.getline();
+        if (line == nullptr)
         {
             break;
         }
-        if (!ss || ss[0] == '\0' || ss[0] == '\n')
+        if (!line || line[0] == '\0' || line[0] == '\n')
         {
             continue;
         }
         else
         {
-            if (N_fields_first_row < 0)
+            if (num_fields_first_row < 0)
             {
                 // Count the fields the same way the rows are tokenized below.
-                std::vector<char> row_copy(ss, ss + strlen(ss) + 1);
+                std::vector<char> row_copy(line, line + strlen(line) + 1);
                 char *count_saveptr = nullptr;
                 char *count_token = strtok_r(row_copy.data(), "\t\r\n", &count_saveptr);
-                N_fields_first_row = 0;
+                num_fields_first_row = 0;
                 while (count_token)
                 {
-                    ++N_fields_first_row;
+                    ++num_fields_first_row;
                     count_token = strtok_r(NULL, "\t\r\n", &count_saveptr);
                 }
             }
             line_offsets.push_back(row_offset);
-            ++N_rows;
+            ++num_input_rows;
         }
     }
-    infp.close();
+    reader.close();
 
     // A data row holds one gene-ID field followed by one value per cell.
     // Headers come in two flavours: with a label for the gene-ID column (as many
     // fields as a data row) or without one (one field fewer, as written by
     // pandas.DataFrame.to_csv).
     // Only in the first case is the leading header field not a cell name.
-    if (N_fields_first_row < 0 || static_cast<int>(cell_names.size()) == N_fields_first_row)
+    if (num_fields_first_row < 0 || static_cast<int>(cell_names_c.size()) == num_fields_first_row)
     {
-        cell_names.erase(cell_names.begin());
+        cell_names_c.erase(cell_names_c.begin());
     }
-    else if (static_cast<int>(cell_names.size()) + 1 != N_fields_first_row)
+    else if (static_cast<int>(cell_names_c.size()) + 1 != num_fields_first_row)
     {
         fprintf(stderr, "Error: header line has %d fields but the first data row has %d in %s\n",
-                static_cast<int>(cell_names.size()), N_fields_first_row, in_file.c_str());
+                static_cast<int>(cell_names_c.size()), num_fields_first_row, in_file.c_str());
         exit(EXIT_FAILURE);
     }
-    C = static_cast<int>(cell_names.size());
+    num_cells = static_cast<int>(cell_names_c.size());
 
     // No cell columns at all means the tab characters are missing, which is what a
     // comma- or space-separated file looks like to this parser.
-    if (C == 0)
+    if (num_cells == 0)
     {
         fprintf(stderr, "Error: no cell columns found in %s. Sanity only reads tab-separated input; "
                         "convert comma- or space-separated files to TSV first.\n", in_file.c_str());
         exit(EXIT_FAILURE);
     }
 
-    if (N_rows == 0)
+    if (num_input_rows == 0)
     {
-        G = 0;
-        N_c.assign(static_cast<std::size_t>(C), 0.0);
-        n.clear();
-        gene_names.clear();
-        tsv_offsets.clear();
+        num_genes = 0;
+        cell_totals_c.assign(static_cast<std::size_t>(num_cells), 0.0);
+        gene_totals_g.clear();
+        gene_names_g.clear();
+        tsv_offsets_g.clear();
         return;
     }
 
     // PASS 2: Parallel processing of rows
-    std::vector<std::string> gene_names_tmp(N_rows);
-    std::vector<double> gene_totals_tmp(N_rows, 0.0);
-    std::vector<char> is_expressed(N_rows, 0);
-    std::vector<double> cell_totals(static_cast<size_t>(C), 0.0);
+    // The input_* vectors run over all input rows (genes) or cells, before genes without counts are dropped.
+    std::vector<std::string> input_gene_names_g(num_input_rows);
+    std::vector<double> input_gene_totals_g(num_input_rows, 0.0); // n_g of every input row (SI Eq. 15).
+    std::vector<char> is_expressed(num_input_rows, 0);
+    std::vector<double> input_cell_totals_c(static_cast<size_t>(num_cells), 0.0); // N_c of every cell (SI Eq. 9).
     std::atomic<bool> parse_error(false);
     std::string parse_error_msg;
     std::string parse_error_line;
     int parse_error_row = -1;
 
-    #pragma omp parallel num_threads(N_threads)
+    #pragma omp parallel num_threads(num_threads)
     {
         // Thread-local accumulators for cell totals
-        std::vector<double> local_cell_totals(static_cast<size_t>(C), 0.0);
+        std::vector<double> local_cell_totals_c(static_cast<size_t>(num_cells), 0.0); // This thread's share of N_c.
 
         // Each thread opens its own FileReader instance once and reuses it
         FileReader thread_reader(in_file);
-        char *thread_ss = nullptr;
-        char *thread_sc = nullptr;
+        char *thread_line = nullptr;
+        char *thread_line_copy = nullptr;
         char *thread_token = nullptr;
         if (!thread_reader.is_open())
         {
@@ -373,7 +374,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         }
 
         #pragma omp for schedule(static)
-        for (int row_idx = 0; row_idx < N_rows; ++row_idx)
+        for (int row_idx = 0; row_idx < num_input_rows; ++row_idx)
         {
             if (parse_error.load())
             {
@@ -386,19 +387,19 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
             char *thread_saveptr = nullptr;
             // Seek to the line offset
             thread_reader.seekg(line_offsets[row_idx]);
-            thread_ss = thread_reader.getline();
-            if (thread_ss == nullptr)
+            thread_line = thread_reader.getline();
+            if (thread_line == nullptr)
             {
                 continue;
             }
-            thread_sc = new char[static_cast<std::size_t>(strlen(thread_ss) + 1)];
-            std::strncpy(thread_sc, thread_ss, static_cast<std::size_t>(strlen(thread_ss) + 1));
-            thread_sc[strlen(thread_ss)] = '\0';
+            thread_line_copy = new char[static_cast<std::size_t>(strlen(thread_line) + 1)];
+            std::strncpy(thread_line_copy, thread_line, static_cast<std::size_t>(strlen(thread_line) + 1));
+            thread_line_copy[strlen(thread_line)] = '\0';
 
-            thread_token = strtok_r(thread_sc, "\t\r\n", &thread_saveptr);
+            thread_token = strtok_r(thread_line_copy, "\t\r\n", &thread_saveptr);
             if (thread_token == NULL)
             {
-                delete[] thread_sc;
+                delete[] thread_line_copy;
                 continue;
             }
             std::string gene_id(thread_token);
@@ -415,14 +416,14 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
 
             double row_sum = 0.0;
             bool row_parse_failed = false;
-            for (int c = 0; c < C; ++c)
+            for (int c = 0; c < num_cells; ++c)
             {
                 thread_token = strtok_r(NULL, "\t\r\n", &thread_saveptr);
                 if (thread_token != NULL)
                 {
                     double value = std::stod(thread_token); /**total count this gene**/
                     row_sum += value;
-                    local_cell_totals[static_cast<std::size_t>(c)] += value;
+                    local_cell_totals_c[static_cast<std::size_t>(c)] += value;
                 }
                 else
                 {
@@ -433,7 +434,7 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
                             parse_error = true;
                             parse_error_row = row_idx + 1;
                             parse_error_msg = "Error: not enough fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
-                            parse_error_line = thread_sc ? thread_sc : "";
+                            parse_error_line = thread_line_copy ? thread_line_copy : "";
                         }
                     }
                     row_parse_failed = true;
@@ -451,13 +452,13 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
                         parse_error = true;
                         parse_error_row = row_idx + 1;
                         parse_error_msg = "Error: too many fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
-                        parse_error_line = thread_sc ? thread_sc : "";
+                        parse_error_line = thread_line_copy ? thread_line_copy : "";
                     }
                 }
                 row_parse_failed = true;
             }
-            delete[] thread_sc;
-            thread_sc = nullptr;
+            delete[] thread_line_copy;
+            thread_line_copy = nullptr;
             if (row_parse_failed)
             {
                 continue;
@@ -467,8 +468,8 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
             if (row_sum > 0.0)
             {
                 is_expressed[row_idx] = 1;
-                gene_totals_tmp[row_idx] = row_sum;
-                gene_names_tmp[row_idx] = gene_id;
+                input_gene_totals_g[row_idx] = row_sum;
+                input_gene_names_g[row_idx] = gene_id;
             }
         }
 
@@ -478,9 +479,9 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         // Reduce cell totals from all threads
         #pragma omp critical
         {
-            for (std::size_t c = 0; c < static_cast<std::size_t>(C); ++c)
+            for (std::size_t c = 0; c < static_cast<std::size_t>(num_cells); ++c)
             {
-                cell_totals[c] += local_cell_totals[c];
+                input_cell_totals_c[c] += local_cell_totals_c[c];
             }
         }
     }
@@ -496,32 +497,32 @@ void Get_G_C_UMIcountMatrix(std::string in_file,
         exit(EXIT_FAILURE);
     }
 
-    gene_names.clear();
-    tsv_offsets.clear();
-    std::vector<double> gene_totals;
-    G = 0;
+    gene_names_g.clear();
+    tsv_offsets_g.clear();
+    std::vector<double> kept_gene_totals_g; // n_g of the genes with at least one count.
+    num_genes = 0;
 
-    for (int row_idx = 0; row_idx < N_rows; ++row_idx)
+    for (int row_idx = 0; row_idx < num_input_rows; ++row_idx)
     {
         if (is_expressed[row_idx])
         {
-            ++G;
-            tsv_offsets.push_back(static_cast<std::streampos>(line_offsets[row_idx]));
-            gene_totals.push_back(gene_totals_tmp[row_idx]);
-            gene_names.push_back(gene_names_tmp[row_idx]);
+            ++num_genes;
+            tsv_offsets_g.push_back(static_cast<std::streampos>(line_offsets[row_idx]));
+            kept_gene_totals_g.push_back(input_gene_totals_g[row_idx]);
+            gene_names_g.push_back(input_gene_names_g[row_idx]);
         }
     }
 
     // Assign results to output vectors
-    N_c.assign(cell_totals.begin(), cell_totals.end());
-    n.assign(gene_totals.begin(), gene_totals.end());
+    cell_totals_c.assign(input_cell_totals_c.begin(), input_cell_totals_c.end());
+    gene_totals_g.assign(kept_gene_totals_g.begin(), kept_gene_totals_g.end());
 }
 
-static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C, std::map<int, int> &gene_idx, std::vector<RowBlock> &mtx_rows, std::vector<double> &N_c, std::vector<double> &n)
+static void index_mtx_counts_serial(std::string in_file, int &num_input_rows, int &num_genes, int &num_cells, std::map<int, int> &row_to_gene, std::vector<RowBlock> &mtx_rows_g, std::vector<double> &cell_totals_c, std::vector<double> &gene_totals_g)
 {
 
-    FileReader infp(in_file);
-    if (!infp.is_open())
+    FileReader reader(in_file);
+    if (!reader.is_open())
     {
         fprintf(stderr, "Cannot open input file %s\n", in_file.c_str());
         exit(EXIT_FAILURE);
@@ -533,7 +534,7 @@ static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C,
 
     for (int i = 0; i < 100; ++i)
     {
-        line_buffer = infp.getline();
+        line_buffer = reader.getline();
         if (line_buffer == nullptr)
         {
             fprintf(stderr, "Error: unable to read from file %s\n", in_file.c_str());
@@ -568,7 +569,7 @@ static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C,
     // Read header: first non-comment line contains N_rows C and (ignored third value)
     while (true)
     {
-        line_buffer = infp.getline();
+        line_buffer = reader.getline();
         if (line_buffer == nullptr)
         {
             fprintf(stderr, "Error: no valid header found in %s\n", in_file.c_str());
@@ -583,20 +584,20 @@ static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C,
         {
             token = strtok(line_buffer, " ");
             // Highest number of genes expressed and not
-            N_rows = std::stoi(token);
+            num_input_rows = std::stoi(token);
             token = strtok(NULL, " \t");
             // Number of cells
-            C = std::stoi(token);
+            num_cells = std::stoi(token);
             break;
         }
     }
 
     // Prepare accumulators
-    std::vector<char> expressed_genes(N_rows, 0);
-    std::vector<RowBlock> row_blocks_tmp(N_rows);
-    std::vector<double> gene_totals(N_rows, 0.0);
-    std::vector<double> cell_totals(static_cast<std::size_t>(C), 0.0);
-    for (int g = 0; g < N_rows; ++g)
+    std::vector<char> expressed_genes(num_input_rows, 0);
+    std::vector<RowBlock> row_blocks_tmp(num_input_rows);
+    std::vector<double> input_gene_totals_g(num_input_rows, 0.0); // n_g of every input row (SI Eq. 15).
+    std::vector<double> input_cell_totals_c(static_cast<std::size_t>(num_cells), 0.0); // N_c of every cell (SI Eq. 9).
+    for (int g = 0; g < num_input_rows; ++g)
     {
         row_blocks_tmp[g].offset = -1;
         row_blocks_tmp[g].nnz = 0;
@@ -604,13 +605,13 @@ static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C,
 
     // Ensure file sorted by row index
     int last_row_index = -1; // zero-based
-    G = 0;
-    int g_idx, c_idx;
+    num_genes = 0;
+    int row_index, cell_index; // 0-based gene (row) and cell (column) of the current MTX entry.
     double count;
     while (true)
     {
-        long long offset = infp.tellg();
-        line_buffer = infp.getline();
+        long long offset = reader.tellg();
+        line_buffer = reader.getline();
         if (line_buffer == nullptr)
         {
             break;
@@ -626,91 +627,91 @@ static void Get_G_C_MTX_legacy(std::string in_file, int &N_rows, int &G, int &C,
         {
             continue;
         }
-        g_idx = std::stoi(token) - 1;
+        row_index = std::stoi(token) - 1;
 
         token = strtok(NULL, " \t\r\n");
         if (token == NULL)
         {
-            fprintf(stderr, "Error: missing cell index for gene %d in MTX file %s\n", g_idx + 1, in_file.c_str());
-            infp.close();
+            fprintf(stderr, "Error: missing cell index for gene %d in MTX file %s\n", row_index + 1, in_file.c_str());
+            reader.close();
             exit(EXIT_FAILURE);
         }
-        c_idx = std::stoi(token) - 1;
+        cell_index = std::stoi(token) - 1;
 
         token = strtok(NULL, " \t\r\n");
         if (token == NULL)
         {
-            fprintf(stderr, "Error: missing count for gene %d cell %d in MTX file %s\n", g_idx + 1, c_idx + 1, in_file.c_str());
-            infp.close();
+            fprintf(stderr, "Error: missing count for gene %d cell %d in MTX file %s\n", row_index + 1, cell_index + 1, in_file.c_str());
+            reader.close();
             exit(EXIT_FAILURE);
         }
         count = std::stod(token);
 
-        if (g_idx < 0 || g_idx >= N_rows)
+        if (row_index < 0 || row_index >= num_input_rows)
         {
-            fprintf(stderr, "Error: gene index %d out of range in MTX file %s\n", g_idx + 1, in_file.c_str());
-            infp.close();
+            fprintf(stderr, "Error: gene index %d out of range in MTX file %s\n", row_index + 1, in_file.c_str());
+            reader.close();
             exit(EXIT_FAILURE);
         }
 
         // Sorted-by-row check: smaller row index cannot follow larger
-        if (last_row_index > g_idx)
+        if (last_row_index > row_index)
         {
-            fprintf(stderr, "Error: MTX file %s is not sorted by row. Row %d appears after row %d.\nRun scripts/sort_mtx_by_row.py on the file to sort it, e.g.: python3 sort_mtx_by_row.py -i %s\n", in_file.c_str(), g_idx + 1, last_row_index + 1, in_file.c_str());
-            infp.close();
+            fprintf(stderr, "Error: MTX file %s is not sorted by row. Row %d appears after row %d.\nRun scripts/sort_mtx_by_row.py on the file to sort it, e.g.: python3 sort_mtx_by_row.py -i %s\n", in_file.c_str(), row_index + 1, last_row_index + 1, in_file.c_str());
+            reader.close();
             exit(EXIT_FAILURE);
         }
-        last_row_index = g_idx;
+        last_row_index = row_index;
 
-        if (c_idx < 0 || c_idx >= C)
+        if (cell_index < 0 || cell_index >= num_cells)
         {
-            fprintf(stderr, "Error: cell index %d out of range in MTX file %s\n", c_idx + 1, in_file.c_str());
-            infp.close();
+            fprintf(stderr, "Error: cell index %d out of range in MTX file %s\n", cell_index + 1, in_file.c_str());
+            reader.close();
             exit(EXIT_FAILURE);
         }
 
-        if (!expressed_genes[g_idx])
+        if (!expressed_genes[row_index])
         {
-            expressed_genes[g_idx] = 1;
-            G++;
-            row_blocks_tmp[g_idx].offset = offset;
-            row_blocks_tmp[g_idx].nnz = 1;
-            row_blocks_tmp[g_idx].row_index = g_idx;
+            expressed_genes[row_index] = 1;
+            num_genes++;
+            row_blocks_tmp[row_index].offset = offset;
+            row_blocks_tmp[row_index].nnz = 1;
+            row_blocks_tmp[row_index].row_index = row_index;
         }
         else
         {
-            row_blocks_tmp[g_idx].nnz += 1;
+            row_blocks_tmp[row_index].nnz += 1;
         }
-        gene_totals[g_idx] += count;
-        cell_totals[static_cast<std::size_t>(c_idx)] += count;
+        input_gene_totals_g[row_index] += count;
+        input_cell_totals_c[static_cast<std::size_t>(cell_index)] += count;
     }
-    infp.close();
+    reader.close();
 
     // Build gene_idx map, mtx_rows blocks and totals n (only for non-zero genes)
-    mtx_rows.clear();
-    mtx_rows.resize(G);
-    n.assign(static_cast<std::size_t>(G), 0.0);
-    int cur = 0;
-    for (int g = 0; g < N_rows; ++g)
+    mtx_rows_g.clear();
+    mtx_rows_g.resize(num_genes);
+    gene_totals_g.assign(static_cast<std::size_t>(num_genes), 0.0);
+    int next_gene = 0; // Index of the next kept gene.
+    for (int g = 0; g < num_input_rows; ++g)
     {
         if (expressed_genes[g])
         {
-            gene_idx[g] = cur;
-            mtx_rows[cur] = row_blocks_tmp[g];
-            n[static_cast<std::size_t>(cur)] = gene_totals[g];
-            cur++;
+            row_to_gene[g] = next_gene;
+            mtx_rows_g[next_gene] = row_blocks_tmp[g];
+            gene_totals_g[static_cast<std::size_t>(next_gene)] = input_gene_totals_g[g];
+            next_gene++;
         }
         else
         {
-            gene_idx[g] = -1;
+            row_to_gene[g] = -1;
         }
     }
-    N_c.assign(cell_totals.begin(), cell_totals.end());
+    cell_totals_c.assign(input_cell_totals_c.begin(), input_cell_totals_c.end());
 }
 
-void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int, int> &gene_idx,
-                 std::vector<RowBlock> &mtx_rows, std::vector<double> &N_c, std::vector<double> &n,
-                 int N_threads)
+void index_mtx_counts(std::string in_file, int &num_input_rows, int &num_genes, int &num_cells, std::map<int, int> &row_to_gene,
+                 std::vector<RowBlock> &mtx_rows_g, std::vector<double> &cell_totals_c, std::vector<double> &gene_totals_g,
+                 int num_threads)
 {
     const auto started = std::chrono::steady_clock::now();
     const bool gzip_input = in_file.size() >= 3 && in_file.substr(in_file.size() - 3) == ".gz";
@@ -718,11 +719,11 @@ void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int,
     int actual_threads = 1;
     if (!gzip_input)
     {
-        fprintf(stdout, "Indexing MTX input with up to %d threads (bounded buffers, no index cache)\n", N_threads);
+        fprintf(stdout, "Indexing MTX input with up to %d threads (bounded buffers, no index cache)\n", num_threads);
         fflush(stdout);
         try
         {
-            fast_mtx::index(in_file, N_threads, N_rows, G, C, gene_idx, mtx_rows, N_c, n, actual_threads);
+            fast_mtx::index(in_file, num_threads, num_input_rows, num_genes, num_cells, row_to_gene, mtx_rows_g, cell_totals_c, gene_totals_g, actual_threads);
             fast_complete = true;
         }
         catch (const fast_mtx::Unsupported &reason)
@@ -743,69 +744,69 @@ void Get_G_C_MTX(std::string in_file, int &N_rows, int &G, int &C, std::map<int,
     }
     if (!fast_complete)
     {
-        Get_G_C_MTX_legacy(in_file, N_rows, G, C, gene_idx, mtx_rows, N_c, n);
+        index_mtx_counts_serial(in_file, num_input_rows, num_genes, num_cells, row_to_gene, mtx_rows_g, cell_totals_c, gene_totals_g);
         actual_threads = 1;
     }
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     fprintf(stdout, "MTX indexing complete: reader=%s threads=%d genes=%d cells=%d seconds=%.6f\n",
-            fast_complete ? "fast" : "existing", actual_threads, G, C, seconds);
+            fast_complete ? "fast" : "existing", actual_threads, num_genes, num_cells, seconds);
     fflush(stdout);
 }
 
 std::vector<std::string> Read_CellNames(const std::string &filename)
 {
-    std::vector<std::string> cell_names;
+    std::vector<std::string> cell_names_c;
     if (filename == "none" || filename.empty())
     {
-        return cell_names;
+        return cell_names_c;
     }
-    FileReader infp(filename);
-    if (!infp.is_open())
+    FileReader reader(filename);
+    if (!reader.is_open())
     {
         fprintf(stderr, "Cannot open input file %s\n", filename.c_str());
         exit(EXIT_FAILURE);
     }
     char *line = nullptr;
-    while ((line = infp.getline()) != nullptr)
+    while ((line = reader.getline()) != nullptr)
     {
-        cell_names.push_back(std::string(line));
+        cell_names_c.push_back(std::string(line));
     }
-    return cell_names;
+    return cell_names_c;
 }
 
 std::vector<std::string> Read_GeneNames(const std::string &filename,
-                                        const std::map<int, int> &gene_idx,
-                                        const int G)
+                                        const std::map<int, int> &row_to_gene,
+                                        const int num_genes)
 {
-    std::vector<std::string> gene_names;
+    std::vector<std::string> gene_names_g;
     if (filename == "none" || filename.empty())
     {
-        return gene_names;
+        return gene_names_g;
     }
-    FileReader infp(filename);
-    if (!infp.is_open())
+    FileReader reader(filename);
+    if (!reader.is_open())
     {
         fprintf(stderr, "Cannot open input file %s\n", filename.c_str());
         exit(EXIT_FAILURE);
     }
     char *line = nullptr;
     int gene_index = 0;
-    while ((line = infp.getline()) != nullptr)
+    while ((line = reader.getline()) != nullptr)
     {
         // Only add gene if its index in gene_idx is not -1
-        auto it = gene_idx.find(gene_index);
-        if (it != gene_idx.end() && it->second != -1)
+        auto it = row_to_gene.find(gene_index);
+        if (it != row_to_gene.end() && it->second != -1)
         {
-            gene_names.push_back(std::string(line));
+            gene_names_g.push_back(std::string(line));
         }
         gene_index++;
     }
     // Check that the length of gene_names equals G
-    if (static_cast<int>(gene_names.size()) != G)
+    if (static_cast<int>(gene_names_g.size()) != num_genes)
     {
         fprintf(stderr, "Error: Number of gene names (%d) does not match expected G (%d)\n",
-                static_cast<int>(gene_names.size()), G);
+                static_cast<int>(gene_names_g.size()), num_genes);
         exit(EXIT_FAILURE);
     }
-    return gene_names;
+    return gene_names_g;
 }

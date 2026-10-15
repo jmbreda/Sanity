@@ -23,7 +23,7 @@
   transcendental function evaluations", J. Comp. Appl. Math. 244 (2013) 77-89.
 */
 
-#include <FukushimaLambertW.h>
+#include "helpers/math/FukushimaLambertW.h"
 #include <cmath>
 #include <limits>
 #include <iostream>

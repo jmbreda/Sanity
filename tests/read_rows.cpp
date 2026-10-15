@@ -1,4 +1,4 @@
-#include "DenseRowReader.hpp"
+#include "helpers/io/DenseRowReader.hpp"
 #include <algorithm>
 #include <exception>
 #include <fstream>
@@ -16,14 +16,14 @@ int main(int argc, char** argv) {
         std::map<int,int> index;
         std::vector<RowBlock> blocks;
         std::vector<std::streampos> offsets;
-        std::vector<double> libraries, totals;
+        std::vector<double> cell_totals_c, gene_totals_g;
         std::vector<std::string> gene_ids, cell_ids;
         if (mode.substr(0,3)=="raw") {
             genes=1;cells=2;blocks.resize(1);
             blocks[0].offset=0;blocks[0].row_index=0;
             blocks[0].nnz=mode=="raw_truncated" ? 2 : 1;
-        } else if (format=="mtx") Get_G_C_MTX(filename,rows,genes,cells,index,blocks,libraries,totals,threads);
-        else Get_G_C_UMIcountMatrix(filename,rows,genes,cells,offsets,libraries,totals,cell_ids,gene_ids,threads);
+        } else if (format=="mtx") index_mtx_counts(filename,rows,genes,cells,index,blocks,cell_totals_c,gene_totals_g,threads);
+        else index_tsv_counts(filename,rows,genes,cells,offsets,cell_totals_c,gene_totals_g,cell_ids,gene_ids,threads);
         if (mode=="stale") blocks.at(0).row_index+=1;
         std::vector<double> values(static_cast<size_t>(genes)*cells);
         if (mode=="parallel" || mode=="raw_parallel") {

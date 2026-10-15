@@ -1,4 +1,4 @@
-#include "npy_writer.hpp"
+#include "helpers/io/npy_writer.hpp"
 
 #include <algorithm>
 #include <cstring>

@@ -3,9 +3,9 @@
 
 #include <vector>
 
-double fitfrac(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double prev_q, const double* log_N_c = nullptr, double library_total = 0, double* workspace = nullptr);
-void fractions_at_q(double *f, const std::vector<double>& n_c, double n, double v, int C, const std::vector<double>& N_c, double q, const double* log_N_c = nullptr);
-double deltaq(double *Q,int C,double beta, double q);
-double fq(double *Q,int C,double beta, double q);
-double LambertW0_approximation(const double& x);
+double fit_fractions(double *fractions_c, const std::vector<double>& umi_counts_c, double gene_total, double gene_variance, int num_cells, const std::vector<double>& cell_totals_c, double previous_log_weighted_total, const double* log_cell_totals_c = nullptr, double sum_cell_totals = 0, double* workspace_c = nullptr);
+void reconstruct_fractions(double *fractions_c, const std::vector<double>& umi_counts_c, double gene_total, double gene_variance, int num_cells, const std::vector<double>& cell_totals_c, double log_weighted_total, const double* log_cell_totals_c = nullptr);
+double newton_step(double *lambert_log_arg_base_c, int num_cells, double total_times_variance, double log_weighted_total);
+double fraction_sum_residual(double *lambert_log_arg_base_c, int num_cells, double total_times_variance, double log_weighted_total);
+double lambert_w0_of_exp_asymptotic(const double& log_arg);
 #endif
