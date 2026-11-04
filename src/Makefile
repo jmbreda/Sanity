@@ -32,7 +32,7 @@ BINDIR := ../bin
 IO := helpers/io
 MATH := helpers/math
 
-SANITY_OBJS := sanity_main.o sanity_options.o sanity_input.o gene_fit.o fit_frac.o \
+SANITY_OBJS := sanity_main.o sanity_options.o sanity_input.o sanity_output.o gene_fit.o fit_frac.o \
     read_input_files.o dense_row_reader.o npy_writer.o FukushimaLambertW.o digamma_trigamma.o
 
 Sanity: $(SANITY_OBJS) | $(BINDIR)
@@ -41,7 +41,7 @@ Sanity: $(SANITY_OBJS) | $(BINDIR)
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-sanity_main.o: sanity_main.cpp gene_fit.hpp logging.hpp sanity_options.hpp sanity_input.hpp Version.h $(IO)/format_output.hpp $(IO)/read_input_files.hpp $(IO)/dense_row_reader.hpp $(IO)/writer.hpp $(IO)/npy_writer.hpp
+sanity_main.o: sanity_main.cpp gene_fit.hpp logging.hpp sanity_options.hpp sanity_input.hpp sanity_output.hpp Version.h $(IO)/read_input_files.hpp $(IO)/dense_row_reader.hpp $(IO)/writer.hpp $(IO)/npy_writer.hpp
 	$(CC) $(CFLAGS) -c sanity_main.cpp
 
 sanity_options.o: sanity_options.cpp sanity_options.hpp gene_fit.hpp logging.hpp
@@ -49,6 +49,9 @@ sanity_options.o: sanity_options.cpp sanity_options.hpp gene_fit.hpp logging.hpp
 
 sanity_input.o: sanity_input.cpp sanity_input.hpp sanity_options.hpp gene_fit.hpp logging.hpp $(IO)/read_input_files.hpp
 	$(CC) $(CFLAGS) -c sanity_input.cpp
+
+sanity_output.o: sanity_output.cpp sanity_output.hpp sanity_options.hpp gene_fit.hpp logging.hpp Version.h $(IO)/writer.hpp $(IO)/npy_writer.hpp
+	$(CC) $(CFLAGS) -c sanity_output.cpp
 
 gene_fit.o: gene_fit.cpp gene_fit.hpp fit_frac.hpp $(MATH)/digamma_trigamma.hpp
 	$(CC) $(CFLAGS) -c gene_fit.cpp
