@@ -355,10 +355,13 @@ void index_tsv_counts(std::string in_file,
     std::string parse_error_line;
     int parse_error_row = -1;
 
+    // The cell totals N_c are summed in input-row order, whatever the number of threads. The counts may be
+    // non-integer, and floating-point addition is not associative, so summing per-thread partial totals and merging
+    // them in thread-arrival order made N_c (and with it every gene's fit) differ in the last bits from run to run.
+    // Each thread parses its rows into a buffer in parallel; only the addition into N_c runs in the ordered block.
     #pragma omp parallel num_threads(num_threads)
     {
-        // Thread-local accumulators for cell totals
-        std::vector<double> local_cell_totals_c(static_cast<size_t>(num_cells), 0.0); // This thread's share of N_c.
+        std::vector<double> row_values_c(static_cast<size_t>(num_cells), 0.0); // n_gc of the row this thread parsed.
 
         // Each thread opens its own FileReader instance once and reuses it
         FileReader thread_reader(in_file);
@@ -373,117 +376,112 @@ void index_tsv_counts(std::string in_file,
             }
         }
 
-        #pragma omp for schedule(static)
+        // Chunks of one row keep the threads interleaved, so the ordered block below does not serialise the parsing.
+        #pragma omp for schedule(static, 1) ordered
         for (int row_idx = 0; row_idx < num_input_rows; ++row_idx)
         {
-            if (parse_error.load())
+            // Every iteration reaches the ordered block exactly once; row_parsed says whether to add the row.
+            bool row_parsed = false;
+            if (!parse_error.load() && thread_reader.is_open())
             {
-                continue;
-            }
-            if (!thread_reader.is_open())
-            {
-                continue;
-            }
-            char *thread_saveptr = nullptr;
-            // Seek to the line offset
-            thread_reader.seekg(line_offsets[row_idx]);
-            thread_line = thread_reader.getline();
-            if (thread_line == nullptr)
-            {
-                continue;
-            }
-            thread_line_copy = new char[static_cast<std::size_t>(strlen(thread_line) + 1)];
-            std::strncpy(thread_line_copy, thread_line, static_cast<std::size_t>(strlen(thread_line) + 1));
-            thread_line_copy[strlen(thread_line)] = '\0';
-
-            thread_token = strtok_r(thread_line_copy, "\t\r\n", &thread_saveptr);
-            if (thread_token == NULL)
-            {
-                delete[] thread_line_copy;
-                continue;
-            }
-            std::string gene_id(thread_token);
-            std::size_t pos = gene_id.find('\r');
-            if (pos != std::string::npos)
-            {
-                gene_id.erase(pos, 1);
-            }
-            pos = gene_id.find('\n');
-            if (pos != std::string::npos)
-            {
-                gene_id.erase(pos, 1);
-            }
-
-            double row_sum = 0.0;
-            bool row_parse_failed = false;
-            for (int c = 0; c < num_cells; ++c)
-            {
-                thread_token = strtok_r(NULL, "\t\r\n", &thread_saveptr);
-                if (thread_token != NULL)
+                char *thread_saveptr = nullptr;
+                // Seek to the line offset
+                thread_reader.seekg(line_offsets[row_idx]);
+                thread_line = thread_reader.getline();
+                if (thread_line != nullptr)
                 {
-                    double value = std::stod(thread_token); /**total count this gene**/
-                    row_sum += value;
-                    local_cell_totals_c[static_cast<std::size_t>(c)] += value;
+                    thread_line_copy = new char[static_cast<std::size_t>(strlen(thread_line) + 1)];
+                    std::strncpy(thread_line_copy, thread_line, static_cast<std::size_t>(strlen(thread_line) + 1));
+                    thread_line_copy[strlen(thread_line)] = '\0';
+                    thread_token = strtok_r(thread_line_copy, "\t\r\n", &thread_saveptr);
                 }
-                else
+                if (thread_line != nullptr && thread_token != NULL)
                 {
-                    #pragma omp critical
+                    std::string gene_id(thread_token);
+                    std::size_t pos = gene_id.find('\r');
+                    if (pos != std::string::npos)
                     {
-                        if (!parse_error.load())
+                        gene_id.erase(pos, 1);
+                    }
+                    pos = gene_id.find('\n');
+                    if (pos != std::string::npos)
+                    {
+                        gene_id.erase(pos, 1);
+                    }
+
+                    double row_sum = 0.0;
+                    bool row_parse_failed = false;
+                    for (int c = 0; c < num_cells; ++c)
+                    {
+                        thread_token = strtok_r(NULL, "\t\r\n", &thread_saveptr);
+                        if (thread_token != NULL)
                         {
-                            parse_error = true;
-                            parse_error_row = row_idx + 1;
-                            parse_error_msg = "Error: not enough fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
-                            parse_error_line = thread_line_copy ? thread_line_copy : "";
+                            double value = std::stod(thread_token); /**total count this gene**/
+                            row_sum += value;
+                            row_values_c[static_cast<std::size_t>(c)] = value;
+                        }
+                        else
+                        {
+                            #pragma omp critical
+                            {
+                                if (!parse_error.load())
+                                {
+                                    parse_error = true;
+                                    parse_error_row = row_idx + 1;
+                                    parse_error_msg = "Error: not enough fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
+                                    parse_error_line = thread_line_copy ? thread_line_copy : "";
+                                }
+                            }
+                            row_parse_failed = true;
+                            break;
                         }
                     }
-                    row_parse_failed = true;
-                    break;
-                }
-            }
-            // Mirror of the check above: a row with more values than cells means the
-            // file does not match the header, so do not silently drop the extra ones.
-            if (!row_parse_failed && strtok_r(NULL, "\t\r\n", &thread_saveptr) != NULL)
-            {
-                #pragma omp critical
-                {
-                    if (!parse_error.load())
+                    // Mirror of the check above: a row with more values than cells means the
+                    // file does not match the header, so do not silently drop the extra ones.
+                    if (!row_parse_failed && strtok_r(NULL, "\t\r\n", &thread_saveptr) != NULL)
                     {
-                        parse_error = true;
-                        parse_error_row = row_idx + 1;
-                        parse_error_msg = "Error: too many fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
-                        parse_error_line = thread_line_copy ? thread_line_copy : "";
+                        #pragma omp critical
+                        {
+                            if (!parse_error.load())
+                            {
+                                parse_error = true;
+                                parse_error_row = row_idx + 1;
+                                parse_error_msg = "Error: too many fields on line number " + std::to_string(parse_error_row) + " in " + in_file;
+                                parse_error_line = thread_line_copy ? thread_line_copy : "";
+                            }
+                        }
+                        row_parse_failed = true;
+                    }
+                    if (!row_parse_failed)
+                    {
+                        row_parsed = true;
+                        // Record gene if total count is greater than 0
+                        if (row_sum > 0.0)
+                        {
+                            is_expressed[row_idx] = 1;
+                            input_gene_totals_g[row_idx] = row_sum;
+                            input_gene_names_g[row_idx] = gene_id;
+                        }
                     }
                 }
-                row_parse_failed = true;
-            }
-            delete[] thread_line_copy;
-            thread_line_copy = nullptr;
-            if (row_parse_failed)
-            {
-                continue;
+                delete[] thread_line_copy;
+                thread_line_copy = nullptr;
             }
 
-            // Record gene if total count is greater than 0
-            if (row_sum > 0.0)
+            #pragma omp ordered
             {
-                is_expressed[row_idx] = 1;
-                input_gene_totals_g[row_idx] = row_sum;
-                input_gene_names_g[row_idx] = gene_id;
+                if (row_parsed)
+                {
+                    for (std::size_t c = 0; c < static_cast<std::size_t>(num_cells); ++c)
+                    {
+                        input_cell_totals_c[c] += row_values_c[c];
+                    }
+                }
             }
         }
 
         // Close thread's FileReader
         thread_reader.close();
-
-        // Reduce cell totals from all threads
-        #pragma omp critical
-        {
-            for (std::size_t c = 0; c < static_cast<std::size_t>(num_cells); ++c)
-            {
-                input_cell_totals_c[c] += local_cell_totals_c[c];
-            }
-        }
     }
 
     // PASS 3: Build final results (only expressed genes)

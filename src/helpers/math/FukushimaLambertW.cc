@@ -152,15 +152,16 @@ namespace Fukushima {
   }
 
 
-  double
-  LambertW0(const double z)
-  {
-    static double e[66];
-    static double g[65];
-    static double a[12];
-    static double b[12];
-
-    if (!e[0]) {
+  // Lookup tables of LambertW0. They used to be function-local static arrays filled on the first call behind an
+  // `if (!e[0])` check, which is a data race under OpenMP: a second thread could see e[0] set and read the other
+  // tables before the first thread had filled them. A static object is initialised exactly once, thread-safely (C++11).
+  struct LambertW0Tables {
+    double e[66];
+    double g[65];
+    double a[12];
+    double b[12];
+    LambertW0Tables()
+    {
       const double e1 = 1 / M_E;
       double ej = 1;
       e[0] = M_E;
@@ -180,6 +181,18 @@ namespace Fukushima {
         j = jj;
       }
     }
+  };
+
+
+  double
+  LambertW0(const double z)
+  {
+    static const LambertW0Tables tables;
+    const double* const e = tables.e;
+    const double* const g = tables.g;
+    const double* const a = tables.a;
+    const double* const b = tables.b;
+
     if (abs(z) < 0.05)
       return LambertW0ZeroSeries(z);
     if (z < -0.35) {
@@ -239,15 +252,14 @@ namespace Fukushima {
   }
 
 
-  double
-  LambertWm1(const double z)
-  {
-    static double e[64];
-    static double g[64];
-    static double a[12];
-    static double b[12];
-
-    if (!e[0]) {
+  // Lookup tables of LambertWm1, initialised once and thread-safely for the same reason as LambertW0Tables.
+  struct LambertWm1Tables {
+    double e[64];
+    double g[64];
+    double a[12];
+    double b[12];
+    LambertWm1Tables()
+    {
       const double e1 = 1 / M_E;
       double ej = e1;
       e[0] = M_E;
@@ -266,6 +278,18 @@ namespace Fukushima {
         j = jj;
       }
     }
+  };
+
+
+  double
+  LambertWm1(const double z)
+  {
+    static const LambertWm1Tables tables;
+    const double* const e = tables.e;
+    const double* const g = tables.g;
+    const double* const a = tables.a;
+    const double* const b = tables.b;
+
     if (z >= 0) {
       cerr << "(lambertwm1) Argument out of range. z=" << z << endl;
       return numeric_limits<double>::quiet_NaN();
