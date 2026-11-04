@@ -1,8 +1,8 @@
-src/Digamma_Trigamma.o
-src/FitFrac.o
+src/digamma_trigamma.o
+src/fit_frac.o
 src/FukushimaLambertW.o
-src/ReadInputFiles.o
-src/calc_true_variation_parallel_prior_mu_sigma.o
+src/read_input_files.o
+src/sanity_main.o
 .vscode/
 /datasets
 /tests/sanity_output

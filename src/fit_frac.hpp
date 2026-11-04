@@ -1,5 +1,5 @@
-#ifndef _FitFrac_h_
-#define _FitFrac_h_
+#ifndef SANITY_FIT_FRAC_HPP
+#define SANITY_FIT_FRAC_HPP
 
 #include <vector>
 

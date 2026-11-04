@@ -1,5 +1,5 @@
-#ifndef WRITER_HPP
-#define WRITER_HPP
+#ifndef SANITY_WRITER_HPP
+#define SANITY_WRITER_HPP
 
 #include <cstdio>
 #include <ios>

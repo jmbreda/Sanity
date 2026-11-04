@@ -1,6 +1,6 @@
 #pragma once
 
-#include "helpers/io/ReadInputFiles.h"
+#include "helpers/io/read_input_files.hpp"
 #include <memory>
 
 namespace sanity {

@@ -1,7 +1,7 @@
 #ifndef SANITY_FAST_MTX_READER_HPP
 #define SANITY_FAST_MTX_READER_HPP
 
-#include "helpers/io/ReadInputFiles.h"
+#include "helpers/io/read_input_files.hpp"
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -91,7 +91,7 @@ inline long long next_line(std::ifstream& input, long long offset, long long end
     return ending;
 }
 
-// Same outputs as index_mtx_counts (see ReadInputFiles.h).
+// Same outputs as index_mtx_counts (see read_input_files.hpp).
 // The exact_*_totals vectors are the integer totals before they are converted to double.
 inline void index(const std::string& filename, int num_threads, int& num_input_rows, int& num_genes, int& num_cells,
                   std::map<int, int>& row_to_gene, std::vector<RowBlock>& mtx_rows_g,

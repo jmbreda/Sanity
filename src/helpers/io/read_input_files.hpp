@@ -1,5 +1,5 @@
-#ifndef _ReadInputFiles_h_
-#define _ReadInputFiles_h_
+#ifndef SANITY_READ_INPUT_FILES_HPP
+#define SANITY_READ_INPUT_FILES_HPP
 
 #include <cstddef>
 #include <cstdio>

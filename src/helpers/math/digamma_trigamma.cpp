@@ -1,4 +1,4 @@
-#include "helpers/math/Digamma_Trigamma.h"
+#include "helpers/math/digamma_trigamma.hpp"
 #include <cmath>
 
 double digamma(double x){

@@ -74,14 +74,14 @@ python3 compare.py
 
 ## Source layout
 
-The top level of `src` holds the Sanity-specific code: the three programs (`calc_true_variation_parallel_prior_mu_sigma.cpp`, `compute_distance.cpp`, `compute_gene_correlations.cpp`), the model fitting (`FitFrac`) and `Version.h`.
+The top level of `src` holds the Sanity-specific code: the three programs (`sanity_main.cpp`, `sanity_distance.cpp`, `sanity_gene_correlation.cpp`), the model fitting (`fit_frac`) and `Version.h`.
 Generic helpers live in `src/helpers`:
 
 - `helpers/io`: readers and writers for the count matrices (TSV and MTX, plain or gzip), the dense row reader, the output formatting and writer, and the NPY writer.
 - `helpers/math`: digamma/trigamma and the Lambert W function.
 
 Helpers do not depend on the top-level files.
-Includes are written relative to `src`, for example `#include "helpers/io/ReadInputFiles.h"`.
+Includes are written relative to `src`, for example `#include "helpers/io/read_input_files.hpp"`.
 
 ## Pull request process
 

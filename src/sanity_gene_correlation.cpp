@@ -20,7 +20,7 @@ using namespace std;
 // A suffix such as _i_c is a vector over the cells for gene i.
 
 // Compile :
-// g++ -std=c++11 -O2 -ffast-math -O3 -fopenmp compute_gene_correlations.cpp -o Sanity_gene_correlations
+// g++ -std=c++11 -O2 -ffast-math -O3 -fopenmp sanity_gene_correlation.cpp -o Sanity_gene_correlation
 
 // Distances functions :
 // with error bars:

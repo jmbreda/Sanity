@@ -24,12 +24,12 @@
     #include <direct.h> // For _mkdir on Windows
 #endif
 
-#include "helpers/io/ReadInputFiles.h"
-#include "helpers/io/DenseRowReader.hpp"
-#include "FitFrac.h"
-#include "helpers/math/Digamma_Trigamma.h"
-#include "helpers/io/Writer.hpp"
-#include "helpers/io/FormatOutput.hpp"
+#include "helpers/io/read_input_files.hpp"
+#include "helpers/io/dense_row_reader.hpp"
+#include "fit_frac.hpp"
+#include "helpers/math/digamma_trigamma.hpp"
+#include "helpers/io/writer.hpp"
+#include "helpers/io/format_output.hpp"
 #include "helpers/io/npy_writer.hpp"
 #include "Version.h"
 
@@ -522,7 +522,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
     // variance_grid_b = v_b, the candidate values of the gene variance v_g (SI S1.1.4).
     // num_cells = C and num_bins = B.
     int c, b;
-    double inv_total_times_variance; // 1/(n_g v_b); the reciprocal of total_times_variance in FitFrac.cpp.
+    double inv_total_times_variance; // 1/(n_g v_b); the reciprocal of total_times_variance in fit_frac.cpp.
     double log_likelihood; // L(v_b), the log marginal likelihood of the current grid point (SI Eq. 32).
     double log_det_curvature; // log det(M_g/n_g) (SI Eqs. 31, 33); the constant C*log(n_g) is dropped because it does not depend on v_g.
     double log_weighted_total; // q_g = log sum_c N_c exp(delta_gc) (SI Eq. 22).

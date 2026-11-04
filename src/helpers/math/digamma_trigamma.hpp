@@ -1,5 +1,5 @@
-#ifndef _Digamma_Trigamma_h_
-#define _Digamma_Trigamma_h_
+#ifndef SANITY_DIGAMMA_TRIGAMMA_HPP
+#define SANITY_DIGAMMA_TRIGAMMA_HPP
 
 #include <math.h>
 

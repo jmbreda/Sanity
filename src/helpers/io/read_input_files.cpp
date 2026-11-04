@@ -1,5 +1,5 @@
-#include "helpers/io/ReadInputFiles.h"
-#include "helpers/io/FastMtxReader.hpp"
+#include "helpers/io/read_input_files.hpp"
+#include "helpers/io/fast_mtx_reader.hpp"
 #include <chrono>
 #include <omp.h>
 #include <atomic>

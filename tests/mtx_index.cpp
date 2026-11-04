@@ -1,4 +1,4 @@
-#include "helpers/io/ReadInputFiles.h"
+#include "helpers/io/read_input_files.hpp"
 #include <cstdint>
 #include <filesystem>
 #include <fstream>

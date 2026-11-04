@@ -1,4 +1,4 @@
-#include "helpers/io/DenseRowReader.hpp"
+#include "helpers/io/dense_row_reader.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
