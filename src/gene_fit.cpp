@@ -3,6 +3,7 @@
 #include "helpers/math/digamma_trigamma.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -20,16 +21,17 @@
 //      the grid makes the cell estimates at every grid point and averages them over the posterior of v_g (MARG).
 // Both branches make the cell estimates with the same two functions: reconstruct_fractions (fit_frac.cpp), which
 // gives f_gc back from q_g, and compute_cell_estimates, which turns f_gc into delta_gc and its error bar.
+// MARG averages the cell estimates over the grid as it goes, so no estimates are stored per grid point.
 
 GeneWorkspace::GeneWorkspace(int num_cells, int num_bins, VarianceMethod variance_method)
-    : lambert_log_arg_base_c(num_cells), fractions_c(num_cells), log_fold_change_c(num_cells),
-      inv_curv_diag_rank1_c(num_cells), inv_curv_diag_num_c(num_cells), inv_curv_diag_den2_c(num_cells),
+    : lambert_log_arg_base_c(num_cells), fractions_c(num_cells),
       log_weighted_total_b(num_bins), log_likelihood_b(num_bins), mean_ltq_b(num_bins)
 {
     if (variance_method == VarianceMethod::MARG)
     {
-        log_fold_change_bc.resize(static_cast<std::size_t>(num_bins) * num_cells);
-        log_fold_change_error_sq_bc.resize(static_cast<std::size_t>(num_bins) * num_cells);
+        bin_log_fold_change_c.resize(num_cells);
+        bin_log_fold_change_error_sq_c.resize(num_cells);
+        log_fold_change_spread_c.resize(num_cells);
     }
 }
 
@@ -70,14 +72,22 @@ static double zero_count_log_fold_change_error_sq(double log_fold_change, double
     throw std::runtime_error("Zero-count uncertainty did not converge");
 }
 
-// The log fold change of every cell at one v_g: delta_gc = log(f_gc) - log(N_c) + q_g (SI Eq. 28).
+// The log fold change of one cell at one v_g: delta_gc = log(f_gc) - log(N_c) + q_g (SI Eq. 28).
+// At the exact solution this equals v_g (n_gc - n_g f_gc), but q_g is only solved to the Newton tolerance, and that
+// form multiplies the remaining error by v_g, so the logarithm is kept.
+static inline double log_fold_change(double fraction, double log_cell_total, double log_weighted_total)
+{
+    return std::log(fraction) - log_cell_total + log_weighted_total;
+}
+
+// delta_gc of every cell at one v_g.
 static void compute_log_fold_changes(const std::vector<double>& fractions_c, double log_weighted_total,
                                      const std::vector<double>& log_cell_totals_c, double* log_fold_change_c)
 {
     const int num_cells = static_cast<int>(fractions_c.size());
     for (int c = 0; c < num_cells; ++c)
     {
-        log_fold_change_c[c] = std::log(fractions_c[c]) - log_cell_totals_c[c] + log_weighted_total;
+        log_fold_change_c[c] = log_fold_change(fractions_c[c], log_cell_totals_c[c], log_weighted_total);
     }
 }
 
@@ -86,33 +96,23 @@ static void compute_log_fold_changes(const std::vector<double>& fractions_c, dou
 // asymmetric error bar of SI Eq. 38 instead.
 static void compute_log_fold_change_errors(const std::vector<double>& umi_counts_c, const std::vector<double>& fractions_c,
                                            const double* log_fold_change_c, double gene_total, double gene_variance,
-                                           double* log_fold_change_error_sq_c, GeneWorkspace& workspace)
+                                           double* log_fold_change_error_sq_c)
 {
     const int num_cells = static_cast<int>(umi_counts_c.size());
-    double* rank1_c = workspace.inv_curv_diag_rank1_c.data();
-    double* num_c = workspace.inv_curv_diag_num_c.data();
-    double* den2_c = workspace.inv_curv_diag_den2_c.data();
     const double inv_variance = 1.0 / gene_variance;
-    // rank1_c = n_g f_gc^2 / (n_g f_gc + 1/v_g) for each cell c.
-    for (int c = 0; c < num_cells; ++c)
-    {
-        rank1_c[c] = gene_total * fractions_c[c] * fractions_c[c] / (gene_total * fractions_c[c] + inv_variance);
-    }
-    // den1 is one minus the full sum of the rank-one terms (the matrix determinant lemma, SI Eq. 33); den2_c is the diagonal of M_g.
+    // den2_c = n_g f_gc + 1/v_g, the diagonal of M_g, and rank1_c = n_g f_gc^2 / den2_c, one term of each sum over cells in SI Eq. 37.
+    auto den2 = [&](int c) { return gene_total * fractions_c[c] + inv_variance; };
+    auto rank1 = [&](int c) { return gene_total * fractions_c[c] * fractions_c[c] / den2(c); };
+    // den1 is one minus the full sum of the rank-one terms (the matrix determinant lemma, SI Eq. 33).
     double den1 = 1.0;
     for (int c = 0; c < num_cells; ++c)
     {
-        den1 -= rank1_c[c];
-        den2_c[c] = gene_total * fractions_c[c] + inv_variance;
+        den1 -= rank1(c);
     }
-    // The numerator removes the term of cell c from the sum.
-    for (int c = 0; c < num_cells; c++)
-    {
-        num_c[c] = den1 + rank1_c[c];
-    }
+    // The numerator den1 + rank1_c removes the term of cell c from the sum.
     for (int c = 0; c < num_cells; ++c)
     {
-        log_fold_change_error_sq_c[c] = num_c[c] / (den1 * den2_c[c]);
+        log_fold_change_error_sq_c[c] = (den1 + rank1(c)) / (den1 * den2(c));
     }
     // fix computation of asymmetric variance for zero count (SI Eq. 38)
     for (int c = 0; c < num_cells; ++c)
@@ -129,16 +129,17 @@ static void compute_log_fold_change_errors(const std::vector<double>& umi_counts
 static void compute_cell_estimates(const std::vector<double>& umi_counts_c, const std::vector<double>& fractions_c,
                                    double log_weighted_total, double gene_variance, double gene_total,
                                    const std::vector<double>& log_cell_totals_c,
-                                   double* log_fold_change_c, double* log_fold_change_error_sq_c, GeneWorkspace& workspace)
+                                   double* log_fold_change_c, double* log_fold_change_error_sq_c)
 {
     compute_log_fold_changes(fractions_c, log_weighted_total, log_cell_totals_c, log_fold_change_c);
-    compute_log_fold_change_errors(umi_counts_c, fractions_c, log_fold_change_c, gene_total, gene_variance, log_fold_change_error_sq_c, workspace);
+    compute_log_fold_change_errors(umi_counts_c, fractions_c, log_fold_change_c, gene_total, gene_variance, log_fold_change_error_sq_c);
 }
 
-// L(v_b), the log marginal likelihood at one grid point (SI Eqs. 20, 32, 33), from f_gc, delta_gc and q_g at that point.
+// L(v_b), the log marginal likelihood at one grid point (SI Eqs. 20, 32, 33), from f_gc and q_g at that point.
+// delta_gc is computed on the fly rather than stored.
 // The constant C*log(n_g) of log det(M_g) is dropped because it does not depend on v_g.
 static double bin_log_likelihood(const std::vector<double>& umi_counts_c, const std::vector<double>& fractions_c,
-                                 const std::vector<double>& log_fold_change_c, double gene_total, double bin_variance,
+                                 const std::vector<double>& log_cell_totals_c, double gene_total, double bin_variance,
                                  double log_weighted_total)
 {
     const int num_cells = static_cast<int>(umi_counts_c.size());
@@ -147,8 +148,9 @@ static double bin_log_likelihood(const std::vector<double>& umi_counts_c, const 
     double log_likelihood = -0.5 * ((double)num_cells) * std::log(bin_variance); // 1st term of SI Eq. 20
     for (int c = 0; c < num_cells; ++c)
     {
-        log_likelihood += umi_counts_c[c] * log_fold_change_c[c];                 // data term sum_c n_gc*delta_gc, SI Eq. 20
-        sum_log_fold_change_sq += log_fold_change_c[c] * log_fold_change_c[c];
+        const double delta = log_fold_change(fractions_c[c], log_cell_totals_c[c], log_weighted_total);
+        log_likelihood += umi_counts_c[c] * delta;                 // data term sum_c n_gc*delta_gc, SI Eq. 20
+        sum_log_fold_change_sq += delta * delta;
     }
     log_likelihood -= sum_log_fold_change_sq / (2 * bin_variance); // 2nd term of SI Eq. 20
     log_likelihood -= gene_total * log_weighted_total;     // last term of SI Eq. 20, using sum_c N_c exp(delta_gc) = exp(q_g)
@@ -198,8 +200,9 @@ static int select_variance_bin(VarianceMethod variance_method, const std::vector
     }
     else if (variance_method == VarianceMethod::MAP)
     {
-        // Dividing the normalised likelihood by v applies an implicit 1/v (Jeffreys) prior on the
-        // gene variance. This is the only prior in effect anywhere in this computation.
+        // The maximum of the posterior density in v_g under a 1/v_g (Jeffreys) prior: the posterior mass
+        // of a grid point divided by its width. The grid is equally spaced in log(v_g), so the width of a grid
+        // point is proportional to v_b, and EAP and MARG, which weigh the grid points by their mass, assume the same prior.
         double max_posterior = -1e+100;
         for (int b = 0; b < num_bins; b++)
         {
@@ -249,11 +252,13 @@ static void estimate_at_selected_bin(int selected_bin, const std::vector<double>
     result.mean_ltq_error_sq = trigamma_total; // Only psi_1(n_g) (SI Eq. 47); the spread of mu_g(v_b) is not included.
     reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, gene_variance, num_cells, log_weighted_total, log_cell_totals_c.data());
     compute_cell_estimates(umi_counts_c, workspace.fractions_c, log_weighted_total, gene_variance, gene_total, log_cell_totals_c,
-                           result.log_fold_change_c.data(), result.log_fold_change_error_sq_c.data(), workspace);
+                           result.log_fold_change_c.data(), result.log_fold_change_error_sq_c.data());
 }
 
 // MARG: make the cell estimates at every grid point and average everything over the posterior P(v_b | n_g)
 // (SI Eqs. 39, 42, 45 and 47). The reported v_g is the posterior mean of the variance.
+// The averages over the grid are accumulated one grid point at a time with West's weighted update of the mean and
+// the spread, so only the estimates of the current grid point are held.
 static void marginalise_over_variance(const std::vector<double>& umi_counts_c, double gene_total, double trigamma_total, const std::vector<double>& variance_grid_b,
                                       const std::vector<double>& log_cell_totals_c, GeneWorkspace& workspace, RowComputation& result)
 {
@@ -261,18 +266,39 @@ static void marginalise_over_variance(const std::vector<double>& umi_counts_c, d
     const int num_bins = static_cast<int>(variance_grid_b.size());
     const std::vector<double>& variance_likelihood_b = result.variance_likelihood_b;
     const std::vector<double>& mean_ltq_b = workspace.mean_ltq_b;
-    std::vector<double>& log_fold_change_bc = workspace.log_fold_change_bc;
-    std::vector<double>& log_fold_change_error_sq_bc = workspace.log_fold_change_error_sq_bc;
+    double* bin_log_fold_change_c = workspace.bin_log_fold_change_c.data();
+    double* bin_log_fold_change_error_sq_c = workspace.bin_log_fold_change_error_sq_c.data();
+    // sum_b P(v_b) (delta_gc(v_b) - <delta_gc>)^2 so far, in West's update.
+    std::vector<double>& log_fold_change_spread_c = workspace.log_fold_change_spread_c;
+    std::vector<double>& log_fold_change_c = result.log_fold_change_c; // <delta_gc> = sum_b P(v_b) delta_gc(v_b) (SI Eq. 39)
+    std::vector<double>& log_fold_change_error_sq_c = result.log_fold_change_error_sq_c; // epsilon_gc^2 (SI Eq. 42)
+    std::fill(log_fold_change_c.begin(), log_fold_change_c.end(), 0.0);
+    std::fill(log_fold_change_spread_c.begin(), log_fold_change_spread_c.end(), 0.0);
+    std::fill(log_fold_change_error_sq_c.begin(), log_fold_change_error_sq_c.end(), 0.0);
 
-    // Second pass over the grid: delta_gc(v_b) and var(delta_gc)(v_b) at every grid point.
+    // Second pass over the grid: delta_gc(v_b) and var(delta_gc)(v_b) at every grid point with nonzero weight.
+    double weight_so_far = 0.0; // sum of P(v_b) over the grid points seen so far.
     for (int b = 0; b < num_bins; ++b)
     {
+        const double weight = variance_likelihood_b[b];
+        if (weight == 0.0) continue;
+        weight_so_far += weight;
         const double bin_variance = variance_grid_b[b];
-        const double log_weighted_total = workspace.log_weighted_total_b[b];
-        reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, log_weighted_total, log_cell_totals_c.data());
-        compute_cell_estimates(umi_counts_c, workspace.fractions_c, log_weighted_total, bin_variance, gene_total, log_cell_totals_c,
-                               &log_fold_change_bc[static_cast<std::size_t>(b) * num_cells],
-                               &log_fold_change_error_sq_bc[static_cast<std::size_t>(b) * num_cells], workspace);
+        reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, workspace.log_weighted_total_b[b], log_cell_totals_c.data());
+        compute_cell_estimates(umi_counts_c, workspace.fractions_c, workspace.log_weighted_total_b[b], bin_variance, gene_total, log_cell_totals_c,
+                               bin_log_fold_change_c, bin_log_fold_change_error_sq_c);
+        for (int c = 0; c < num_cells; ++c)
+        {
+            const double deviation = bin_log_fold_change_c[c] - log_fold_change_c[c];
+            log_fold_change_c[c] += (weight / weight_so_far) * deviation;
+            log_fold_change_spread_c[c] += weight * deviation * (bin_log_fold_change_c[c] - log_fold_change_c[c]);
+            log_fold_change_error_sq_c[c] += weight * bin_log_fold_change_error_sq_c[c];
+        }
+    }
+    // epsilon^2 = < (delta - <delta>)^2 > + <var(delta)> (SI Eq. 42); P(v_b) sums to one.
+    for (int c = 0; c < num_cells; ++c)
+    {
+        log_fold_change_error_sq_c[c] += log_fold_change_spread_c[c];
     }
 
     // Average the mean LTQ over the variance grid (SI Eq. 45)
@@ -290,28 +316,6 @@ static void marginalise_over_variance(const std::vector<double>& umi_counts_c, d
     result.mean_ltq = mean_ltq;
     result.mean_ltq_error_sq = mean_ltq_error_sq;
 
-    // Compute <delta> = int p(v)*delta(v) dv (SI Eq. 39)
-    std::vector<double>& log_fold_change_c = result.log_fold_change_c;
-    for (int c = 0; c < num_cells; c++)
-    {
-        log_fold_change_c[c] = 0.0;
-        for (int b = 0; b < num_bins; b++)
-        {
-            log_fold_change_c[c] += variance_likelihood_b[b] * log_fold_change_bc[static_cast<std::size_t>(b) * num_cells + c];
-        }
-    }
-    // Compute epsilon^2 = < (delta - <delta>)^2 > + <var(delta)> (SI Eq. 42)
-    std::vector<double>& log_fold_change_error_sq_c = result.log_fold_change_error_sq_c;
-    for (int c = 0; c < num_cells; c++)
-    {
-        log_fold_change_error_sq_c[c] = 0.0;
-        for (int b = 0; b < num_bins; b++)
-        {
-            const double log_fold_change = log_fold_change_bc[static_cast<std::size_t>(b) * num_cells + c];
-            const double log_fold_change_error_sq = log_fold_change_error_sq_bc[static_cast<std::size_t>(b) * num_cells + c];
-            log_fold_change_error_sq_c[c] += variance_likelihood_b[b] * (log_fold_change - log_fold_change_c[c]) * (log_fold_change - log_fold_change_c[c]) + variance_likelihood_b[b] * log_fold_change_error_sq;
-        }
-    }
     // The reported v_g is the posterior mean of the variance.
     double gene_variance = 0.0;
     for (int b = 0; b < num_bins; ++b)
@@ -331,7 +335,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
     const double trigamma_total = trigamma(gene_total); // psi_1(n_g), the variance of log(alpha_g) (SI Eq. 46).
 
     // Stage 1: fit every grid point, keeping q_g(v_b), L(v_b) and mu_g(v_b).
-    double previous_log_weighted_total = 0.0; // q_g of the previous grid point, the starting guess for the next fit.
+    std::optional<double> previous_log_weighted_total; // q_g of the previous grid point, the starting guess for the next fit.
     double max_log_likelihood = -1e+100; // Maximum of L(v_b) over the grid.
     int max_likelihood_bin = 0; // Grid point at which L(v_b) is maximal (the MLE).
     for (int b = 0; b < num_bins; ++b)
@@ -341,8 +345,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
         previous_log_weighted_total = log_weighted_total;
         workspace.log_weighted_total_b[b] = log_weighted_total;
         workspace.mean_ltq_b[b] = digamma_total - log_weighted_total; /*** SI Eq. 44 ***/
-        compute_log_fold_changes(workspace.fractions_c, log_weighted_total, log_cell_totals_c, workspace.log_fold_change_c.data());
-        const double log_likelihood = bin_log_likelihood(umi_counts_c, workspace.fractions_c, workspace.log_fold_change_c, gene_total, bin_variance, log_weighted_total);
+        const double log_likelihood = bin_log_likelihood(umi_counts_c, workspace.fractions_c, log_cell_totals_c, gene_total, bin_variance, log_weighted_total);
         workspace.log_likelihood_b[b] = log_likelihood;
         if (log_likelihood > max_log_likelihood)
         {

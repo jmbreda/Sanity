@@ -33,15 +33,12 @@ struct GeneWorkspace
 
     std::vector<double> lambert_log_arg_base_c;         // Q_c, the per-cell constants of the fit at one v_g (SI Eq. 24), used by fit_fractions.
     std::vector<double> fractions_c;                    // f_gc, the fraction of the gene's counts expected in each cell (SI Eq. 23).
-    std::vector<double> log_fold_change_c;              // delta_gc at one grid point.
-    std::vector<double> inv_curv_diag_rank1_c;          // n_g f_gc^2 / (n_g f_gc + 1/v_g), one term of each sum over cells in SI Eq. 37.
-    std::vector<double> inv_curv_diag_num_c;            // The numerator of SI Eq. 37, the sum with cell c removed.
-    std::vector<double> inv_curv_diag_den2_c;           // n_g f_gc + 1/v_g, the diagonal of M_g before the rank-one correction (SI Eq. 31).
     std::vector<double> log_weighted_total_b;           // q_g(v_b) at every grid point (SI Eq. 22).
     std::vector<double> log_likelihood_b;               // L(v_b), the log marginal likelihood at every grid point (SI Eq. 32).
     std::vector<double> mean_ltq_b;                     // mu_g(v_b) = psi(n_g) - q_g(v_b) at every grid point (SI Eq. 44).
-    std::vector<double> log_fold_change_bc;             // delta_gc at every grid point, row b at [b * num_cells]; MARG only.
-    std::vector<double> log_fold_change_error_sq_bc;    // var(delta_gc) at every grid point (SI Eq. 37), same layout; MARG only.
+    std::vector<double> bin_log_fold_change_c;          // delta_gc at the current grid point; MARG only.
+    std::vector<double> bin_log_fold_change_error_sq_c; // var(delta_gc) at the current grid point (SI Eq. 37); MARG only.
+    std::vector<double> log_fold_change_spread_c;       // The spread of delta_gc over the grid seen so far, in West's update; MARG only.
 };
 
 // Fits one gene: the log fold change of every cell, its error bar, the mean LTQ and the gene variance.
