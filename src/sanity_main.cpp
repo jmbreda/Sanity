@@ -6,7 +6,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -18,10 +17,10 @@
     #include <direct.h> // For _mkdir on Windows
 #endif
 
-#include "helpers/io/read_input_files.hpp"
 #include "helpers/io/dense_row_reader.hpp"
 #include "gene_fit.hpp"
 #include "logging.hpp"
+#include "sanity_input.hpp"
 #include "sanity_options.hpp"
 #include "helpers/io/writer.hpp"
 #include "helpers/io/format_output.hpp"
@@ -58,54 +57,12 @@ int main(int argc, char **argv)
     const bool bonsai_output_mode = options.bonsai_output_mode;
     std::string out_suffix = "";
 
-    // count Number of genes and cells
-    int num_genes; // G, the number of genes with at least one count.
-    int num_cells; // C, the number of cells.
-    int num_input_rows; // Number of rows (genes) in the input file, including rows without counts.
-    std::map<int, int> row_to_gene; // Maps each MTX row to the index of its gene among the kept genes (-1 if the row has no counts).
-    std::vector<RowBlock> mtx_rows_g; // Position and size of the entries of each kept gene in the MTX file.
-    std::vector<std::streampos> tsv_offsets_g; // Position of the row of each kept gene in the TSV file.
-    std::vector<double> cell_totals_c; // N_c, the total counts of each cell (SI Eq. 9).
-    std::vector<double> gene_totals_g; // n_g, the total counts of each gene (SI Eq. 15).
-    std::vector<std::string> gene_names_g;
-    std::vector<std::string> cell_names_c;
-    logging_debug("Reading input file to get gene and cell counts");
-    if (in_file_extension == "mtx")
-    {
-        index_mtx_counts(in_file, num_input_rows, num_genes, num_cells, row_to_gene, mtx_rows_g, cell_totals_c, gene_totals_g, num_threads);
-        gene_names_g = Read_GeneNames(options.gene_name_file, row_to_gene, num_genes);
-        if (static_cast<int>(gene_names_g.size()) == 0)
-        {
-            logging_debug("Warning: gene names file not found or empty, generating default gene names.");
-            gene_names_g.clear();
-            for (int g = 0; g < num_genes; ++g)
-            {
-                gene_names_g.push_back("Gene_" + std::to_string(g + 1));
-            }
-        }
-        cell_names_c = Read_CellNames(options.cell_name_file);
-        if (static_cast<int>(cell_names_c.size()) == 0)
-        {
-            logging_debug("Warning: cell names file not found or empty, generating default cell names.");
-            for (int c = 0; c < num_cells; ++c)
-            {
-                cell_names_c.push_back("Cell_" + std::to_string(c + 1));
-            }
-        }
-        logging_debug("There were " + std::to_string(num_input_rows) + " rows");
-    }
-    else
-    {
-        index_tsv_counts(in_file, num_input_rows, num_genes, num_cells, tsv_offsets_g, cell_totals_c, gene_totals_g, cell_names_c, gene_names_g, num_threads);
-        logging_debug("There were " + std::to_string(num_input_rows) + " rows");
-    }
-    std::string genes_message = "The input contained " + std::to_string(num_input_rows) + " rows for " + std::to_string(num_cells) +
-                                 " cells, and " + std::to_string(num_genes) + " of these genes had at least one count in the dataset.";
-    if (num_input_rows != num_genes)
-    {
-        genes_message += " " + std::to_string(num_input_rows - num_genes) + " genes were thus removed because no counts were detected.";
-    }
-    logging_debug(genes_message);
+    const CountIndex counts = load_count_index(options);
+    const int num_genes = counts.num_genes; // G
+    const int num_cells = counts.num_cells; // C
+    const std::vector<double> &cell_totals_c = counts.cell_totals_c;
+    const std::vector<std::string> &gene_names_g = counts.gene_names_g;
+    const std::vector<std::string> &cell_names_c = counts.cell_names_c;
 
     // Cache library constants, preserving the sum order.
     std::vector<double> log_cell_totals_c(num_cells); // log(N_c).
@@ -303,11 +260,11 @@ int main(int argc, char **argv)
             try
             {
                 if (!thread_reader) {
-                    thread_reader = std::make_unique<sanity::DenseRowReader>(in_file, in_file_extension, mtx_rows_g, tsv_offsets_g, num_cells);
+                    thread_reader = std::make_unique<sanity::DenseRowReader>(in_file, in_file_extension, counts.mtx_rows_g, counts.tsv_offsets_g, num_cells);
                     umi_counts_c.resize(num_cells);
                 }
                 thread_reader->read_into(g, umi_counts_c.data());
-                result = get_gene_expression_level(umi_counts_c, gene_totals_g[g], variance_grid_b, variance_method, log_cell_totals_c, sum_cell_totals, workspace);
+                result = get_gene_expression_level(umi_counts_c, counts.gene_totals_g[g], variance_grid_b, variance_method, log_cell_totals_c, sum_cell_totals, workspace);
                 if (!npy_output)
                     formatted = sanity::format_output_row(result, gene_names_g[g], print_extended_output);
                 else
