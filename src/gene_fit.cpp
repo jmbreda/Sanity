@@ -341,10 +341,14 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
     for (int b = 0; b < num_bins; ++b)
     {
         const double bin_variance = variance_grid_b[b];
+        // We fit log_weighted_total = q_g(v_b) = log[sum_c N_c exp(delta_gc)] (SI Eq. 22); fit_fractions also fills fractions_c with f_gc.
         const double log_weighted_total = fit_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, previous_log_weighted_total, log_cell_totals_c.data(), sum_cell_totals, workspace.lambert_log_arg_base_c.data());
+
         previous_log_weighted_total = log_weighted_total;
         workspace.log_weighted_total_b[b] = log_weighted_total;
         workspace.mean_ltq_b[b] = digamma_total - log_weighted_total; /*** SI Eq. 44 ***/
+
+        // Log marginal likelihood L(v_b) at this grid point, stored per grid point, while tracking the maximum for the MLE.
         const double log_likelihood = bin_log_likelihood(umi_counts_c, workspace.fractions_c, log_cell_totals_c, gene_total, bin_variance, log_weighted_total);
         workspace.log_likelihood_b[b] = log_likelihood;
         if (log_likelihood > max_log_likelihood)
@@ -367,6 +371,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
     }
     else
     {
+        // The grid point used depends on the variance method: the maximum likelihood (MLE), the posterior maximum (MAP), or the point closest to the posterior mean of v_g (EAP).
         const int selected_bin = select_variance_bin(variance_method, result.variance_likelihood_b, variance_grid_b, max_likelihood_bin);
         estimate_at_selected_bin(selected_bin, umi_counts_c, gene_total, trigamma_total, variance_grid_b, log_cell_totals_c, workspace, result);
     }

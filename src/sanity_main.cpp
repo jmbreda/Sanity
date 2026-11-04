@@ -65,13 +65,14 @@ int main(int argc, char **argv)
     SanityOutput output(options, counts.gene_names_g, counts.cell_names_c, variance_grid_b);
 
     std::exception_ptr output_failure;
-    logging_debug("Fit gene expression levels");
+    logging_debug("Starting the fitting of gene expression levels");
     const std::clock_t begin = std::clock();
     #pragma omp parallel num_threads(num_threads)
     {
         std::unique_ptr<sanity::DenseRowReader> thread_reader;
         std::vector<double> umi_counts_c; // n_gc, the counts of gene g in each cell (SI Eq. 13).
-        GeneWorkspace workspace(num_cells, num_bins, options.variance_method); // Scratch space reused by every fit of this thread.
+        // We create a Scratch space called "workspace" in which all the variables are allocated only once and then reused for all genes treated by this thread.
+        GeneWorkspace workspace(num_cells, num_bins, options.variance_method);
         #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < num_genes; ++g)
         {
