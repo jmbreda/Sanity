@@ -216,6 +216,13 @@ ParseResult parse_options(int argc, char **argv, SanityOptions &options)
     if (!parse_variance_method(variance_method_str, options.variance_method))
         return ParseResult::Error;
 
+    // -npy writes no numerical text, so there is nothing left for -gz to compress.
+    if (options.npy_output && options.gzip_output && !options.bonsai_output_mode)
+    {
+        logging_debug("-npy overrides -gz: the NPY files are not compressed.");
+        options.gzip_output = false;
+    }
+
     // Bonsai output mode writes one fixed set of files, whatever -e, -gz and -npy say. It does need
     // MAP: that is a choice of inference, not of output, so it is not overridden silently.
     if (options.bonsai_output_mode)
@@ -246,8 +253,8 @@ void show_usage()
               << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
               << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
               << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
-              << "\t-gz,--gzip_output\tCompress every text output file with gzip (.gz)\n"
-              << "\t-npy,--npy_output\tWrite the numerical output files as float64 NumPy arrays (.npy) instead of text\n"
+              << "\t-gz,--gzip_output\tCompress the numerical text output files with gzip (.gz); overridden by -npy\n"
+              << "\t-npy,--npy_output\tWrite the numerical output files as float64 NumPy arrays (.npy) instead of text; overrides -gz\n"
               << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP); ignores -e, -gz and -npy\n"
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"

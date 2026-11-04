@@ -19,8 +19,8 @@ struct SanityOptions
     double variance_max = 50.0;             // v_max, the largest candidate gene variance.
     int num_bins = 160;                     // B, the number of grid points of the gene variance between v_min and v_max.
     VarianceMethod variance_method = VarianceMethod::MAP; // How to estimate v_g (see gene_fit.hpp).
-    bool gzip_output = false;               // -gz: compress the text output files.
-    bool npy_output = false;                // -npy: write the numerical output files as NPY.
+    bool gzip_output = false;               // -gz: compress the numerical text files; overridden by -npy.
+    bool npy_output = false;                // -npy: write the numerical output files as NPY; overrides -gz.
     bool bonsai_output_mode = false;        // --bonsai-output-mode: the Bonsai file set; overrides -e, -gz and -npy.
 };
 

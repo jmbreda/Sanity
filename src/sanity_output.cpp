@@ -210,8 +210,8 @@ SanityOutput::SanityOutput(const SanityOptions &options, const std::vector<std::
         return;
     }
 
-    // -e selects the files, -npy writes the numerical ones as float64 NPY instead of text, and -gz
-    // compresses every text file. NPY files are never compressed, so they can still be memory-mapped.
+    // -e selects the files; -npy writes them as float64 NPY instead of text, and otherwise -gz
+    // compresses the text tables. The identifier files are always plain text.
     const FileFormat numeric_format = options.npy_output ? FileFormat::Float64Npy : FileFormat::Text;
     const std::string suffix = options.gzip_output ? ".gz" : "";
     add_field(OutputField::Ltq, numeric_format, suffix, num_cells);
@@ -228,8 +228,8 @@ SanityOutput::SanityOutput(const SanityOptions &options, const std::vector<std::
     // Text tables carry the gene and cell names themselves; NPY arrays need them alongside.
     if (options.extended_output || options.npy_output)
     {
-        write_names(out_folder_ + "geneID.txt" + suffix, gene_names_g);
-        write_names(out_folder_ + "cellID.txt" + suffix, cell_names_c);
+        write_names(out_folder_ + "geneID.txt", gene_names_g);
+        write_names(out_folder_ + "cellID.txt", cell_names_c);
     }
     // The grid that the text likelihood table has as its header line.
     if (options.extended_output && options.npy_output)
