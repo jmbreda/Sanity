@@ -42,7 +42,7 @@ enum ParseResult
 
 
 /***Function declarations ****/
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, int &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, VarianceMethod &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
 
 // Function to print a timestamped message to stderr
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
     double variance_max = 50.0; // v_max, the largest candidate gene variance.
     int num_bins = 160; // B, the number of grid points of the gene variance between v_min and v_max.
     bool no_norm(false);
-    int variance_method = 2; // How to estimate v_g: 0 = MARG, 1 = MLE, 2 = MAP (the default), 3 = EAP.
+    VarianceMethod variance_method = VarianceMethod::MAP; // How to estimate v_g (see gene_fit.hpp).
     bool gzip_output = false;
     bool npy_output = false;
     bool bonsai_output_mode = false;
@@ -242,7 +242,7 @@ int main(int argc, char **argv)
     cmd_file << "# Sanity version: " << SANITY_VERSION << "\n";
 
     static const char* variance_method_names[] = {"MARG", "MLE", "MAP", "EAP"};
-    cmd_file << "# Method: " << variance_method_names[variance_method] << "\n";
+    cmd_file << "# Method: " << variance_method_names[static_cast<int>(variance_method)] << "\n";
     if (bonsai_output_mode)
         cmd_file << "# Output mode: bonsai\n"
                     "# Output: Bonsai NPY; delta/d_delta: <f4; mu/variance: <f8; "
@@ -348,7 +348,7 @@ int main(int argc, char **argv)
     {
         std::unique_ptr<sanity::DenseRowReader> thread_reader;
         std::vector<double> umi_counts_c; // n_gc, the counts of gene g in each cell (SI Eq. 13).
-        std::vector<double> fitting_workspace_c(num_cells); // Scratch space reused by every fit of this thread.
+        GeneWorkspace workspace(num_cells, num_bins, variance_method); // Scratch space reused by every fit of this thread.
         std::vector<double> npy_log_fold_change_error_c; // epsilon_gc (standard deviation) of the current gene, written to d_delta.npy.
         #pragma omp for schedule(dynamic) ordered
         for (int g = 0; g < num_genes; ++g)
@@ -364,7 +364,7 @@ int main(int argc, char **argv)
                     umi_counts_c.resize(num_cells);
                 }
                 thread_reader->read_into(g, umi_counts_c.data());
-                result = get_gene_expression_level(umi_counts_c, cell_totals_c, gene_totals_g[g], variance_grid_b, num_cells, num_bins, variance_method, log_cell_totals_c, sum_cell_totals, fitting_workspace_c);
+                result = get_gene_expression_level(umi_counts_c, cell_totals_c, gene_totals_g[g], variance_grid_b, variance_method, log_cell_totals_c, sum_cell_totals, workspace);
                 if (!npy_output)
                     formatted = sanity::format_output_row(result, gene_names_g[g], print_extended_output);
                 else
@@ -492,7 +492,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, int &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, VarianceMethod &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
 {
 
     // Running with no arguments at all is a usage error, not a help request: main prints the usage
@@ -679,19 +679,19 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         no_norm = true;
 
     if(variance_method_str == "MLE" || variance_method_str == "mle" || variance_method_str == "MaxLikelihood" || variance_method_str == "maxlikelihood" || variance_method_str == "max_likelihood"){
-        variance_method = 1;
+        variance_method = VarianceMethod::MLE;
         logging_debug("Outputting results for the prior variance (v_g) that maximizes the likelihood (MLE).");
     }
     else if(variance_method_str == "MAP" || variance_method_str == "map" || variance_method_str == "MaxAPosterior" || variance_method_str == "maxaposterior" || variance_method_str == "max_a_posterior"){
-        variance_method = 2;
+        variance_method = VarianceMethod::MAP;
         logging_debug("Outputting results for the prior variance (v_g) that maximizes the posterior (MAP).");
     }
     else if(variance_method_str == "EAP" || variance_method_str == "eap" || variance_method_str == "ExpectedAPosterior" || variance_method_str == "expectedaposterior" || variance_method_str == "expected_a_posterior"){
-        variance_method = 3;
+        variance_method = VarianceMethod::EAP;
         logging_debug("Outputting results for the expected value of the prior variance (v_g) over the posterior (EAP).");
     }
     else if(variance_method_str == "MARG" || variance_method_str == "marg" || variance_method_str == "marginalizing"){
-        variance_method = 0;
+        variance_method = VarianceMethod::MARG;
         logging_debug("Outputting results for the prior variance (v_g) marginalizing over v.");
     }
     else {
@@ -705,7 +705,7 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
     if (bonsai_output_mode)
     {
-        if (gzip_output || npy_output || variance_method != 2)
+        if (gzip_output || npy_output || variance_method != VarianceMethod::MAP)
         {
             logging_debug("Bonsai output mode writes NPY and requires MAP; omit gzip/NPY flags and use -v_m MAP.");
             return ERROR;
