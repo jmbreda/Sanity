@@ -6,7 +6,7 @@
 // "SI" in the comments is the Supplementary Information of Breda, Zavolan & van Nimwegen, Nat. Biotechnol. 2021.
 // Index letters at the end of a name give what an array runs over: g = genes, c = cells, b = grid points of the gene variance v_g.
 
-// How the gene variance v_g is estimated. The values are the indices of the method names in the main program.
+// How the gene variance v_g is estimated. The values index the names returned by variance_method_name (sanity_options.hpp).
 enum class VarianceMethod
 {
     MARG = 0, // Average every estimate over the posterior of v_g.
