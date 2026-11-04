@@ -75,9 +75,16 @@ python3 compare.py
 ## Source layout
 
 The top level of `src` holds the Sanity-specific code: the three programs (`sanity_main.cpp`, `sanity_distance.cpp`, `sanity_gene_correlation.cpp`), the per-gene fit (`gene_fit`), the solver for the cell fractions at one gene variance (`fit_frac`) and `Version.h`.
+`sanity_main.cpp` only ties the steps together; the steps of the main program live in their own files:
+
+- `sanity_options`: the command-line options, their parsing and the usage text.
+- `sanity_input`: the scan of the count matrix (sizes, totals, row positions and names).
+- `sanity_output`: the output folder, `sanity_command.txt`, and every output file in every output mode, including the text formatting.
+- `logging.hpp`: timestamped log messages.
+
 Generic helpers live in `src/helpers`:
 
-- `helpers/io`: readers and writers for the count matrices (TSV and MTX, plain or gzip), the dense row reader, the output formatting and writer, and the NPY writer.
+- `helpers/io`: readers and writers for the count matrices (TSV and MTX, plain or gzip), the dense row reader, the text/gzip writer and the NPY writer.
 - `helpers/math`: digamma/trigamma and the Lambert W function.
 
 Helpers do not depend on the top-level files.

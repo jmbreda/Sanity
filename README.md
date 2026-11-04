@@ -49,8 +49,10 @@ The MTX file can be compressed with gzip (with `.gz` extension).
   Fractional counts, gzip input, and counts or totals outside the exact integer range of double precision use the existing serial MTX reader. If an unsupported count is encountered during parallel indexing, the input scan restarts with that reader. The indexing log reports the reader, actual thread count and elapsed time. TSV input retains its existing reader.
   During inference, each worker reuses its count buffer. Plain MTX rows are read through a bounded buffer with direct numeric parsing; fractional counts are supported. TSV and gzip retain their existing numeric conversion.
 
-* `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (NPY, MAP).
 * `-e`: (optional) Print extended output (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
+* `-gz`: (optional flag, no value) Compress every text output file with gzip (`.txt.gz`). See [Output formats](#output-formats-optional).
+* `-npy`: (optional flag, no value) Write the numerical output files as float64 NumPy arrays (`.npy`) instead of text. See [Output formats](#output-formats-optional).
+* `--bonsai-output-mode`: (optional flag, no value) Write only the numerical files and metadata required by Bonsai (NPY, MAP). Overrides `-e`, `-gz` and `-npy`.
 * `-v_m`: (optional, expert-user-only) Choose the method to estimate gene-variances $v_g$. In the MAP, EAP, MLE-options, one value for $v_g$ is fixed, and the corresponding gene expression estimates are returned, in the MARG-option, the gene expression estimates are obtained by marginalizing $v_g$. The options are:
     * MAP (**default**): Use the maximum a posteriori estimate for $v_g$.
     * EAP: expected value of $v_g$ over the posterior.
@@ -120,6 +122,20 @@ change the fitted means, likelihood grid or selected gene variance.
   | Gene 2 | 0.0006 | 0.0051 | 0.0031 | ... |
   | ... | ... | ... | ... | ... |
   
+## Output formats (optional)
+
+`-e` chooses which results are written; `-gz` and `-npy` only change how they are written, and can be combined with each other and with `-e`.
+
+* `-gz`: every text file gets a `.gz` extension and is gzip-compressed, including `geneID.txt` and `cellID.txt`. `Sanity_distance` and `Sanity_gene_correlation` read uncompressed text only.
+* `-npy`: every numerical file is written as a float64 NPY array with the same base name, e.g. `log_transcription_quotients.npy` and, with `-e`, `delta.npy`. Matrices have shape `(genes, cells)`, `likelihood.npy` has shape `(genes, bins)`, and the per-gene values (`mu`, `d_mu`, `variance`) have shape `(genes, 1)`. The arrays hold no names, so `geneID.txt` and `cellID.txt` are always written; with `-e`, `likelihood_grid.npy` (shape `(bins, 1)`) holds the variance grid that heads the text likelihood table. Error bars are standard deviations, as in the text files, but values are not rounded to six decimals.
+* With both flags, the identifier files are compressed and the NPY files are not, so that they can still be memory-mapped.
+
+| Files | default | `-e 1` |
+|:--|:--|:--|
+| text | `log_transcription_quotients.txt`, `ltq_error_bars.txt` | + `mu`, `d_mu`, `variance`, `delta`, `d_delta`, `likelihood` (`.txt`), `geneID.txt`, `cellID.txt` |
+| `-gz` | the same, as `.txt.gz` | the same, as `.txt.gz` |
+| `-npy` | `log_transcription_quotients.npy`, `ltq_error_bars.npy`, `geneID.txt`, `cellID.txt` | + `mu`, `d_mu`, `variance`, `delta`, `d_delta`, `likelihood` (`.npy`), `likelihood_grid.npy` |
+
 ## Bonsai output mode (optional)
 
 Use `--bonsai-output-mode` to write only:
@@ -135,10 +151,9 @@ Use `--bonsai-output-mode` to write only:
 ./bin/Sanity -f counts.tsv -d bonsai_output -n 12 --bonsai-output-mode
 ```
 
-This flag requires MAP inference. It selects these seven files regardless of
-`-e`; it cannot be combined with gzip or the experimental NPY output flag.
-Use a folder without previous numerical text output; Sanity reports an error
-if conflicting files are present. Ordinary and extended output remain text.
+This flag requires MAP inference. It selects these seven files and ignores
+`-e`, `-gz` and `-npy`. Use a folder without output of the other modes; Sanity
+reports an error if such files are present.
 
 `sanity_command.txt` records `# Output mode: bonsai` so consumers can select
 the NPY reader without another command-line option.
@@ -165,8 +180,10 @@ matrix using `numpy.load(path, mmap_mode="r", allow_pickle=False)`.
     -mtx_cells, --mtx_cell_name_file    Specify the cell name text file (only needed if .mtx input file)
     -d, --destination                   Specify the destination path (default: pwd)
     -n, --n_threads                     Specify the number of threads to be used (default: 4)
-    --bonsai-output-mode               Write only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP)
     -e, --extended_output               Option to print extended output (default: false, choice: false,0,true,1)
+    -gz, --gzip_output                  Compress every text output file with gzip (.gz)
+    -npy, --npy_output                  Write the numerical output files as float64 NumPy arrays (.npy) instead of text
+    --bonsai-output-mode                Write only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP); ignores -e, -gz and -npy
     -v_m, --v_method                    Option to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)
     -vmin, --variance_min               Minimal value of variance in log transcription quotient (default: 0.001)
     -vmax, --variance_max               Maximal value of variance in log transcription quotient (default: 50)

@@ -47,7 +47,7 @@ const std::vector<OptionSpec> option_table = {
     {Option::GeneNameFile, {"-mtx_genes", "--mtx_gene_name_file"}, true},
     {Option::CellNameFile, {"-mtx_cells", "--mtx_cell_name_file"}, true},
     {Option::VarianceMethod, {"-v_m", "--v_method"}, true},
-    // The two development-only flags also keep their original spellings working.
+    // -gz and -npy also accept their older spellings.
     {Option::GzipOutput, {"-gz", "--gzip_output", "--gz", "--gzip-output"}, false},
     {Option::NpyOutput, {"-npy", "--npy_output", "--npy", "--npy-output"}, false},
     {Option::BonsaiOutputMode, {"--bonsai-output-mode"}, false},
@@ -216,23 +216,17 @@ ParseResult parse_options(int argc, char **argv, SanityOptions &options)
     if (!parse_variance_method(variance_method_str, options.variance_method))
         return ParseResult::Error;
 
-    // -npy silently overrides both -e and -gz rather than rejecting the combination: the npy path
-    // writes its own fixed set of files (delta/d_delta/mu/variance .npy plus geneID.txt and
-    // cellID.txt), so there is no extended output to print and no text stream to compress.
-    // Like -gz this flag is experimental and intentionally absent from README.md and show_usage().
+    // Bonsai output mode writes one fixed set of files, whatever -e, -gz and -npy say. It does need
+    // MAP: that is a choice of inference, not of output, so it is not overridden silently.
     if (options.bonsai_output_mode)
     {
-        if (options.gzip_output || options.npy_output || options.variance_method != VarianceMethod::MAP)
+        if (options.variance_method != VarianceMethod::MAP)
         {
-            logging_debug("Bonsai output mode writes NPY and requires MAP; omit gzip/NPY flags and use -v_m MAP.");
+            logging_debug("Bonsai output mode requires MAP; use -v_m MAP.");
             return ParseResult::Error;
         }
-        options.npy_output = true;
-    }
-    if (options.npy_output)
-    {
-        options.gzip_output = false;
-        options.extended_output = false;
+        if (options.extended_output || options.gzip_output || options.npy_output)
+            logging_debug("Bonsai output mode ignores -e, -gz and -npy.");
     }
 
     options.in_file_extension = detect_input_type(options.in_file);
@@ -251,8 +245,10 @@ void show_usage()
               << "\t-mtx_cells,--mtx_cell_name_file\tSpecity the cell name text file (only needed if .mtx input file)\n"
               << "\t-d,--destination\tSpecify the destination path (default: pwd)\n"
               << "\t-n,--n_threads\t\tSpecify the number of threads to be used (default: 4)\n"
-              << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP)\n"
               << "\t-e,--extended_output\tOption to print extended output (default: false, choice: false,0,true,1)\n"
+              << "\t-gz,--gzip_output\tCompress every text output file with gzip (.gz)\n"
+              << "\t-npy,--npy_output\tWrite the numerical output files as float64 NumPy arrays (.npy) instead of text\n"
+              << "\t--bonsai-output-mode\tWrite only the four numerical files and IDs/metadata required by Bonsai (NPY, MAP); ignores -e, -gz and -npy\n"
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
               << "\t-nbin,--number_of_variance_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"

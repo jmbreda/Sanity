@@ -65,6 +65,8 @@ all four variance methods on TSV and fractional MTX inputs, a broad count range,
 empty genes and a custom variance grid.
 Extended text, float64 arrays, Bonsai arrays and identifier order must match
 exactly. Command metadata is excluded because the executable paths differ.
+A reference built before `-npy` wrote every selected result as NPY (before the
+output clean-up) writes a different set of `-npy` files, so those comparisons fail.
 Inputs and outputs are generated in a temporary directory and removed.
 
 The inference comparison also covers cached fitting constants, including

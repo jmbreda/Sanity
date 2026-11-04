@@ -144,16 +144,22 @@ bool prepare_output_folder(const SanityOptions &options)
 
     if (options.bonsai_output_mode)
     {
-        for (const char *filename : {"log_transcription_quotients.txt", "ltq_error_bars.txt",
-                                     "d_mu.txt", "likelihood.txt", "delta.txt", "d_delta.txt",
-                                     "mu.txt", "variance.txt", "log_transcription_quotients.txt.gz",
-                                     "ltq_error_bars.txt.gz", "d_mu.txt.gz", "likelihood.txt.gz",
-                                     "delta.txt.gz", "d_delta.txt.gz", "mu.txt.gz", "variance.txt.gz"})
+        // Files of the other output modes that Bonsai output mode would not overwrite, and that a
+        // reader could mistake for part of its output. Its own four NPY files are overwritten.
+        std::vector<std::string> other_output_files;
+        for (const char *name : {"log_transcription_quotients", "ltq_error_bars", "d_mu", "likelihood"})
+            for (const char *extension : {".txt", ".txt.gz", ".npy"})
+                other_output_files.push_back(name + std::string(extension));
+        for (const char *name : {"delta", "d_delta", "mu", "variance"})
+            for (const char *extension : {".txt", ".txt.gz"})
+                other_output_files.push_back(name + std::string(extension));
+        other_output_files.push_back("likelihood_grid.npy");
+        for (const std::string &filename : other_output_files)
         {
             struct stat previous;
             if (stat((out_folder + filename).c_str(), &previous) == 0)
             {
-                logging_debug("Bonsai output mode requires a folder without existing text-output files: " + out_folder);
+                logging_debug("Bonsai output mode requires a folder without output of the other output modes: " + out_folder);
                 return false;
             }
         }
@@ -192,12 +198,11 @@ SanityOutput::SanityOutput(const SanityOptions &options, const std::vector<std::
     : out_folder_(options.out_folder)
 {
     const std::size_t num_cells = cell_names_c.size();
-    if (options.npy_output)
+    if (options.bonsai_output_mode)
     {
-        // The per-cell matrices are float32 in Bonsai output mode and float64 otherwise.
-        const FileFormat matrix_format = options.bonsai_output_mode ? FileFormat::Float32Npy : FileFormat::Float64Npy;
-        add_field(OutputField::LogFoldChange, matrix_format, "", num_cells);
-        add_field(OutputField::LogFoldChangeError, matrix_format, "", num_cells);
+        // Bonsai output mode ignores -e, -gz and -npy: float32 per-cell matrices, float64 gene vectors.
+        add_field(OutputField::LogFoldChange, FileFormat::Float32Npy, "", num_cells);
+        add_field(OutputField::LogFoldChangeError, FileFormat::Float32Npy, "", num_cells);
         add_field(OutputField::MeanLtq, FileFormat::Float64Npy, "", 1);
         add_field(OutputField::GeneVariance, FileFormat::Float64Npy, "", 1);
         write_names(out_folder_ + "geneID.txt", gene_names_g);
@@ -205,24 +210,41 @@ SanityOutput::SanityOutput(const SanityOptions &options, const std::vector<std::
         return;
     }
 
+    // -e selects the files, -npy writes the numerical ones as float64 NPY instead of text, and -gz
+    // compresses every text file. NPY files are never compressed, so they can still be memory-mapped.
+    const FileFormat numeric_format = options.npy_output ? FileFormat::Float64Npy : FileFormat::Text;
     const std::string suffix = options.gzip_output ? ".gz" : "";
-    add_field(OutputField::Ltq, FileFormat::Text, suffix, num_cells);
-    add_field(OutputField::LtqError, FileFormat::Text, suffix, num_cells);
+    add_field(OutputField::Ltq, numeric_format, suffix, num_cells);
+    add_field(OutputField::LtqError, numeric_format, suffix, num_cells);
     if (options.extended_output)
     {
-        add_field(OutputField::MeanLtq, FileFormat::Text, suffix, 1);
-        add_field(OutputField::MeanLtqError, FileFormat::Text, suffix, 1);
-        add_field(OutputField::GeneVariance, FileFormat::Text, suffix, 1);
-        add_field(OutputField::LogFoldChange, FileFormat::Text, suffix, num_cells);
-        add_field(OutputField::LogFoldChangeError, FileFormat::Text, suffix, num_cells);
-        add_field(OutputField::VarianceLikelihood, FileFormat::Text, suffix, variance_grid_b.size());
+        add_field(OutputField::MeanLtq, numeric_format, suffix, 1);
+        add_field(OutputField::MeanLtqError, numeric_format, suffix, 1);
+        add_field(OutputField::GeneVariance, numeric_format, suffix, 1);
+        add_field(OutputField::LogFoldChange, numeric_format, suffix, num_cells);
+        add_field(OutputField::LogFoldChangeError, numeric_format, suffix, num_cells);
+        add_field(OutputField::VarianceLikelihood, numeric_format, suffix, variance_grid_b.size());
+    }
+    // Text tables carry the gene and cell names themselves; NPY arrays need them alongside.
+    if (options.extended_output || options.npy_output)
+    {
         write_names(out_folder_ + "geneID.txt" + suffix, gene_names_g);
         write_names(out_folder_ + "cellID.txt" + suffix, cell_names_c);
+    }
+    // The grid that the text likelihood table has as its header line.
+    if (options.extended_output && options.npy_output)
+    {
+        npy::NpyStreamWriter grid(out_folder_ + "likelihood_grid.npy", 1);
+        for (double variance : variance_grid_b)
+            grid.write_row(&variance, 1);
+        grid.close();
     }
 
     // Header lines of the text tables: the cell names above the per-cell values, the grid above the likelihoods.
     for (FieldFile &file : files_)
     {
+        if (file.format != FileFormat::Text)
+            continue;
         std::ostringstream header;
         if (file.field == OutputField::Ltq || file.field == OutputField::LtqError)
         {
