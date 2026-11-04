@@ -265,10 +265,14 @@ int main(int argc, char **argv)
         out_log_fold_change, out_log_fold_change_error, out_variance_likelihood, out_gene, out_cell;
 
     if (npy_output) {
-        out_log_fold_change_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy", num_cells,
-            bonsai_output_mode ? npy::NpyDType::Float32 : npy::NpyDType::Float64));
-        out_log_fold_change_error_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy", num_cells,
-            bonsai_output_mode ? npy::NpyDType::Float32 : npy::NpyDType::Float64));
+        // The per-cell matrices are float32 in Bonsai output mode and float64 otherwise.
+        npy::NpyDType cell_matrix_dtype = npy::NpyDType::Float64;
+        if (bonsai_output_mode)
+        {
+            cell_matrix_dtype = npy::NpyDType::Float32;
+        }
+        out_log_fold_change_npy.reset(new npy::NpyStreamWriter(out_folder + "delta.npy", num_cells, cell_matrix_dtype));
+        out_log_fold_change_error_npy.reset(new npy::NpyStreamWriter(out_folder + "d_delta.npy", num_cells, cell_matrix_dtype));
         out_mean_ltq_npy.reset(new npy::NpyStreamWriter(out_folder + "mu.npy", 1));
         out_gene_variance_npy.reset(new npy::NpyStreamWriter(out_folder + "variance.npy", 1));
 
@@ -364,7 +368,7 @@ int main(int argc, char **argv)
                     umi_counts_c.resize(num_cells);
                 }
                 thread_reader->read_into(g, umi_counts_c.data());
-                result = get_gene_expression_level(umi_counts_c, cell_totals_c, gene_totals_g[g], variance_grid_b, variance_method, log_cell_totals_c, sum_cell_totals, workspace);
+                result = get_gene_expression_level(umi_counts_c, gene_totals_g[g], variance_grid_b, variance_method, log_cell_totals_c, sum_cell_totals, workspace);
                 if (!npy_output)
                     formatted = sanity::format_output_row(result, gene_names_g[g], print_extended_output);
                 else
@@ -718,7 +722,14 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     }
 
     // Get input file extension
-    in_file_extension = (in_file.size() >= 3) ? in_file.substr(in_file.size() - 3) : in_file;
+    if (in_file.size() >= 3)
+    {
+        in_file_extension = in_file.substr(in_file.size() - 3);
+    }
+    else
+    {
+        in_file_extension = in_file;
+    }
 
     // Check for .mtx.gz or .tsv.gz extensions
     if (in_file.size() >= 7)

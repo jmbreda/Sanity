@@ -40,8 +40,15 @@ static double zero_count_log_fold_change_error_sq(double log_fold_change, double
     // Find the positive displacement whose log-likelihood drop is 1/2.
     // Keep log(1 + f*(exp(e)-1)) rather than linearizing the logarithm.
     auto log_likelihood_drop = [&](double displacement) { // sigma_gc in SI Eq. 38
-        const double logarithm = displacement < 700 ? std::log1p(fraction * std::expm1(displacement))
-                                        : displacement + std::log(fraction + (1 - fraction) * std::exp(-displacement));
+        double logarithm; // log(1 + f*(exp(e)-1)), written to stay finite when exp(e) overflows.
+        if (displacement < 700)
+        {
+            logarithm = std::log1p(fraction * std::expm1(displacement));
+        }
+        else
+        {
+            logarithm = displacement + std::log(fraction + (1 - fraction) * std::exp(-displacement));
+        }
         return displacement * (2 * log_fold_change + displacement) / (2 * gene_variance) + gene_total * logarithm;
     };
     double lo = 0, hi = 1;
@@ -230,8 +237,7 @@ static int select_variance_bin(VarianceMethod variance_method, const std::vector
 }
 
 // MLE, MAP and EAP: report v_b, mu_g(v_b) and the cell estimates at the selected grid point.
-static void estimate_at_selected_bin(int selected_bin, const std::vector<double>& umi_counts_c,
-                                     const std::vector<double>& cell_totals_c, double gene_total, double trigamma_total,
+static void estimate_at_selected_bin(int selected_bin, const std::vector<double>& umi_counts_c, double gene_total, double trigamma_total,
                                      const std::vector<double>& variance_grid_b, const std::vector<double>& log_cell_totals_c,
                                      GeneWorkspace& workspace, RowComputation& result)
 {
@@ -241,15 +247,14 @@ static void estimate_at_selected_bin(int selected_bin, const std::vector<double>
     result.gene_variance = gene_variance;
     result.mean_ltq = workspace.mean_ltq_b[selected_bin];
     result.mean_ltq_error_sq = trigamma_total; // Only psi_1(n_g) (SI Eq. 47); the spread of mu_g(v_b) is not included.
-    reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, gene_variance, num_cells, cell_totals_c, log_weighted_total, log_cell_totals_c.data());
+    reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, gene_variance, num_cells, log_weighted_total, log_cell_totals_c.data());
     compute_cell_estimates(umi_counts_c, workspace.fractions_c, log_weighted_total, gene_variance, gene_total, log_cell_totals_c,
                            result.log_fold_change_c.data(), result.log_fold_change_error_sq_c.data(), workspace);
 }
 
 // MARG: make the cell estimates at every grid point and average everything over the posterior P(v_b | n_g)
 // (SI Eqs. 39, 42, 45 and 47). The reported v_g is the posterior mean of the variance.
-static void marginalise_over_variance(const std::vector<double>& umi_counts_c, const std::vector<double>& cell_totals_c,
-                                      double gene_total, double trigamma_total, const std::vector<double>& variance_grid_b,
+static void marginalise_over_variance(const std::vector<double>& umi_counts_c, double gene_total, double trigamma_total, const std::vector<double>& variance_grid_b,
                                       const std::vector<double>& log_cell_totals_c, GeneWorkspace& workspace, RowComputation& result)
 {
     const int num_cells = static_cast<int>(umi_counts_c.size());
@@ -264,7 +269,7 @@ static void marginalise_over_variance(const std::vector<double>& umi_counts_c, c
     {
         const double bin_variance = variance_grid_b[b];
         const double log_weighted_total = workspace.log_weighted_total_b[b];
-        reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, cell_totals_c, log_weighted_total, log_cell_totals_c.data());
+        reconstruct_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, log_weighted_total, log_cell_totals_c.data());
         compute_cell_estimates(umi_counts_c, workspace.fractions_c, log_weighted_total, bin_variance, gene_total, log_cell_totals_c,
                                &log_fold_change_bc[static_cast<std::size_t>(b) * num_cells],
                                &log_fold_change_error_sq_bc[static_cast<std::size_t>(b) * num_cells], workspace);
@@ -316,8 +321,7 @@ static void marginalise_over_variance(const std::vector<double>& umi_counts_c, c
     result.gene_variance = gene_variance;
 }
 
-RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c, const std::vector<double> &cell_totals_c,
-                                         double gene_total, const std::vector<double> &variance_grid_b,
+RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c, double gene_total, const std::vector<double> &variance_grid_b,
                                          VarianceMethod variance_method, const std::vector<double>& log_cell_totals_c,
                                          double sum_cell_totals, GeneWorkspace& workspace)
 {
@@ -333,7 +337,7 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
     for (int b = 0; b < num_bins; ++b)
     {
         const double bin_variance = variance_grid_b[b];
-        const double log_weighted_total = fit_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, cell_totals_c, previous_log_weighted_total, log_cell_totals_c.data(), sum_cell_totals, workspace.lambert_log_arg_base_c.data());
+        const double log_weighted_total = fit_fractions(workspace.fractions_c.data(), umi_counts_c, gene_total, bin_variance, num_cells, previous_log_weighted_total, log_cell_totals_c.data(), sum_cell_totals, workspace.lambert_log_arg_base_c.data());
         previous_log_weighted_total = log_weighted_total;
         workspace.log_weighted_total_b[b] = log_weighted_total;
         workspace.mean_ltq_b[b] = digamma_total - log_weighted_total; /*** SI Eq. 44 ***/
@@ -356,12 +360,12 @@ RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c
     // Stage 2: the reported estimates, either at one grid point or averaged over the grid.
     if (variance_method == VarianceMethod::MARG)
     {
-        marginalise_over_variance(umi_counts_c, cell_totals_c, gene_total, trigamma_total, variance_grid_b, log_cell_totals_c, workspace, result);
+        marginalise_over_variance(umi_counts_c, gene_total, trigamma_total, variance_grid_b, log_cell_totals_c, workspace, result);
     }
     else
     {
         const int selected_bin = select_variance_bin(variance_method, result.variance_likelihood_b, variance_grid_b, max_likelihood_bin);
-        estimate_at_selected_bin(selected_bin, umi_counts_c, cell_totals_c, gene_total, trigamma_total, variance_grid_b, log_cell_totals_c, workspace, result);
+        estimate_at_selected_bin(selected_bin, umi_counts_c, gene_total, trigamma_total, variance_grid_b, log_cell_totals_c, workspace, result);
     }
     return result;
 }

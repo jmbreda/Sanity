@@ -46,10 +46,9 @@ struct GeneWorkspace
 
 // Fits one gene: the log fold change of every cell, its error bar, the mean LTQ and the gene variance.
 // umi_counts_c = n_gc, the counts of this gene in each cell (SI Eq. 13); gene_total = n_g, their sum (SI Eq. 15).
-// cell_totals_c = N_c and log_cell_totals_c = log(N_c), the total counts of each cell (SI Eq. 9); sum_cell_totals = sum_c N_c.
+// log_cell_totals_c = log(N_c), the log of the total counts of each cell (SI Eq. 9); sum_cell_totals = sum_c N_c.
 // variance_grid_b = v_b, the candidate values of the gene variance (SI Section S1.1.4).
-RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c, const std::vector<double> &cell_totals_c,
-                                         double gene_total, const std::vector<double> &variance_grid_b,
+RowComputation get_gene_expression_level(const std::vector<double> &umi_counts_c, double gene_total, const std::vector<double> &variance_grid_b,
                                          VarianceMethod variance_method, const std::vector<double>& log_cell_totals_c,
                                          double sum_cell_totals, GeneWorkspace& workspace);
 

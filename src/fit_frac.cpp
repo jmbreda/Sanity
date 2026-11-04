@@ -8,26 +8,38 @@
 // "SI" in the comments is the Supplementary Information of Breda, Zavolan & van Nimwegen, Nat. Biotechnol. 2021.
 // Index letters at the end of a name give what an array runs over: c = cells.
 
+// W_0(exp(log_arg)), the principal branch of the Lambert W function of exp(log_arg).
+// At large arguments the LambertW routine breaks, so the asymptotic series is used instead.
+static inline double lambert_w0_of_exp(double log_arg)
+{
+    if (log_arg > 50.0)
+    {
+        return lambert_w0_of_exp_asymptotic(log_arg);
+    }
+    else
+    {
+        return Fukushima::LambertW(0, std::exp(log_arg));
+    }
+}
+
 // Solves the optimum of the log-likelihood for one gene at one value of its variance v_g (SI Eqs. 21-28).
 // Fills fractions_c with f_gc (SI Eq. 23) and returns log_weighted_total, q_g (SI Eq. 22).
-double fit_fractions(double *fractions_c, const std::vector<double>& umi_counts_c, double gene_total, double gene_variance, int num_cells, const std::vector<double>& cell_totals_c, double previous_log_weighted_total, const double* log_cell_totals_c, double sum_cell_totals, double* workspace_c) {
+double fit_fractions(double *fractions_c, const std::vector<double>& umi_counts_c, double gene_total, double gene_variance, int num_cells, double previous_log_weighted_total, const double* log_cell_totals_c, double sum_cell_totals, double* workspace_c) {
     double log_weighted_total, lambert_w, lambert_log_arg, step, residual;
     int c;
     // Q_c = y_gc + log(n_g v_g) with y_gc = v_g n_gc + log(N_c) (SI Eq. 24), which is the log of the Lambert-W argument before q_g is subtracted.
-    double *lambert_log_arg_base_c = workspace_c ? workspace_c : new double [num_cells];
+    double *lambert_log_arg_base_c = workspace_c;
     // n_g v_g; the SI has v_g (n_g + 1) here (Eq. 26), because the prior over alpha_g differs.
     double total_times_variance = gene_total * gene_variance;
     double inv_total_times_variance = 1.0/total_times_variance;
     double log_total_times_variance = std::log(total_times_variance);
 
-    log_weighted_total = 0.0;
     for(c=0;c<num_cells;++c){
-        lambert_log_arg_base_c[c] = (log_cell_totals_c ? log_cell_totals_c[c] : std::log(cell_totals_c[c])) + umi_counts_c[c]*gene_variance + log_total_times_variance;
-        if (!log_cell_totals_c) log_weighted_total += cell_totals_c[c]; // Accumulate sum_c N_c; the log is taken after the loop.
+        lambert_log_arg_base_c[c] = log_cell_totals_c[c] + umi_counts_c[c]*gene_variance + log_total_times_variance;
     }
     // Initial guess for q_g is log(sum_c N_c) + v_g/2.
     // At the optimum q_g = log[sum_c N_c exp(delta_gc)] (SI Eq. 22) and the expectation of exp(delta_gc) is exp(v_g/2).
-    log_weighted_total = std::log(log_cell_totals_c ? sum_cell_totals : log_weighted_total) + 0.5*gene_variance;
+    log_weighted_total = std::log(sum_cell_totals) + 0.5*gene_variance;
 
     if (previous_log_weighted_total != 0.0) {
         residual = fraction_sum_residual(lambert_log_arg_base_c, num_cells, total_times_variance, previous_log_weighted_total);
@@ -74,13 +86,7 @@ double fit_fractions(double *fractions_c, const std::vector<double>& umi_counts_
 
     for(c=0;c<num_cells;++c){
         lambert_log_arg = lambert_log_arg_base_c[c] -log_weighted_total;
-        if(lambert_log_arg > 50){
-            // At large arguments the LambertW routine breaks, so we use an approximation.
-            lambert_w = lambert_w0_of_exp_asymptotic(lambert_log_arg);
-        }
-        else{
-            lambert_w = Fukushima::LambertW(0,std::exp(lambert_log_arg));
-        }
+        lambert_w = lambert_w0_of_exp(lambert_log_arg);
         fractions_c[c] = lambert_w*inv_total_times_variance;
         residual -= lambert_w;
     }
@@ -89,7 +95,6 @@ double fit_fractions(double *fractions_c, const std::vector<double>& umi_counts_
         std::cerr << "fitfrac: WARNING: dq = " << step << " is not close to zero at final q = " << log_weighted_total
             << " funcq = " << residual << std::endl;
     }
-  if (!workspace_c) delete[] lambert_log_arg_base_c;
   return log_weighted_total;
 }
 
@@ -107,12 +112,7 @@ double fraction_sum_residual(double *lambert_log_arg_base_c,int num_cells,double
         if(std::isnan(lambert_log_arg)){
             throw std::runtime_error("Error: x is NaN in fq function.");
         }
-        if(lambert_log_arg > 50.0){
-            lambert_w = lambert_w0_of_exp_asymptotic(lambert_log_arg);
-        }
-        else{
-            lambert_w = Fukushima::LambertW(0,std::exp(lambert_log_arg));
-        }
+        lambert_w = lambert_w0_of_exp(lambert_log_arg);
         residual -= lambert_w;
     }
 
@@ -132,12 +132,7 @@ double newton_step(double *lambert_log_arg_base_c,int num_cells,double total_tim
         if(std::isnan(lambert_log_arg)){
             throw std::runtime_error("Error: x is NaN in deltaq function.");
         }
-        if(lambert_log_arg > 50.0){
-            lambert_w = lambert_w0_of_exp_asymptotic(lambert_log_arg);
-        }
-        else{
-            lambert_w = Fukushima::LambertW(0,std::exp(lambert_log_arg));
-        }
+        lambert_w = lambert_w0_of_exp(lambert_log_arg);
         numerator -= lambert_w;
         denominator += lambert_w/(1.0+lambert_w);
     }
@@ -162,14 +157,14 @@ double lambert_w0_of_exp_asymptotic(const double& log_arg) {
 }
 
 // Reconstruct fractions at the saved fitted root without repeating the root search.
-void reconstruct_fractions(double *fractions_c, const std::vector<double>& umi_counts_c, double gene_total, double gene_variance, int num_cells, const std::vector<double>& cell_totals_c, double log_weighted_total, const double* log_cell_totals_c) {
+void reconstruct_fractions(double *fractions_c, const std::vector<double>& umi_counts_c, double gene_total, double gene_variance, int num_cells, double log_weighted_total, const double* log_cell_totals_c) {
     const double total_times_variance = gene_total * gene_variance;
     const double inv_total_times_variance = 1.0 / total_times_variance;
     const double log_total_times_variance = std::log(total_times_variance);
     for (int c = 0; c < num_cells; ++c) {
-        const double lambert_log_arg_base = (log_cell_totals_c ? log_cell_totals_c[c] : std::log(cell_totals_c[c])) + umi_counts_c[c] * gene_variance + log_total_times_variance;
+        const double lambert_log_arg_base = log_cell_totals_c[c] + umi_counts_c[c] * gene_variance + log_total_times_variance;
         const double lambert_log_arg = lambert_log_arg_base - log_weighted_total;
-        const double lambert_w = lambert_log_arg > 50 ? lambert_w0_of_exp_asymptotic(lambert_log_arg) : Fukushima::LambertW(0, std::exp(lambert_log_arg));
+        const double lambert_w = lambert_w0_of_exp(lambert_log_arg);
         fractions_c[c] = lambert_w * inv_total_times_variance;
     }
 }
