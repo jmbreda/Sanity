@@ -37,6 +37,7 @@ int main(int argc, char **argv)
     const int num_threads = options.num_threads;
     const int num_bins = options.num_bins;
 
+    // counts will contain the index of the input: gene and cell counts and names, cell and gene totals, and where each gene's counts sit in the file.
     const CountIndex counts = load_count_index(options);
     const int num_genes = counts.num_genes; // G
     const int num_cells = counts.num_cells; // C
@@ -50,9 +51,8 @@ int main(int argc, char **argv)
     }
 
     // Grid of candidate gene variances, computed once here and shared with
-    // get_gene_expression_level rather than being recomputed there. Each value must stay exactly
-    // variance_min * exp(log_variance_step * b), with log_variance_step formed exactly as below, to keep the output bit-identical.
-    // The grid is equally spaced in log(v_g), as in SI Section S1.1.4.
+    // get_gene_expression_level. The grid is equally spaced in log(v_g), as in 
+    // SI Section S1.1.4.
     double log_variance_step = std::log(options.variance_max / options.variance_min) / ((double)num_bins - 1);
     std::vector<double> variance_grid_b(num_bins); // v_b, the candidate values of v_g.
     for (int b = 0; b < num_bins; ++b)
@@ -61,6 +61,7 @@ int main(int argc, char **argv)
     if (!prepare_output_folder(options))
         return 1;
     write_command_metadata(options, argc, argv);
+    // Open every output file and write its header and the gene, cell and variance-grid identifiers.
     SanityOutput output(options, counts.gene_names_g, counts.cell_names_c, variance_grid_b);
 
     std::exception_ptr output_failure;
