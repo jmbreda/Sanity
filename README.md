@@ -58,7 +58,6 @@ The MTX file can be compressed with gzip (with `.gz` extension).
     * MARG: (original method) The reported $v_g$ is the EAP estimate, but unlike the EAP option above, this value is not fixed when computing the gene expression estimates — instead, the gene expression estimates are obtained by marginalizing over the posterior of $v_g$.
 * `-vmin/-vmax`: (optional, expert-user-only) Minimal and maximal considered values of the variance in log transcription quotients (double, default: *v<sub>min</sub>=*`0.001` *v<sub>max</sub>=*`50`)
 * `-nbin`: (optional, expert-user-only) Number of bins for the variance in log transcription quotients (integer, default: `160`)
-* `-no_norm`: (optional, expert-user-only) Option to skip cell size normalization (Boolean, `'true', 'false', '1'` or `'0'`, default: `false`)
 
 For MAP, MLE and EAP, Sanity searches the complete variance grid first and
 calculates cell uncertainties only for the selected output bin. It retains
@@ -67,9 +66,8 @@ fractions and expression estimates, instead of storing cell-sized arrays for
 every bin. MARG still
 calculates uncertainties at every bin because it averages over the grid.
 The variance grid, bin selection and uncertainty formulas are unchanged.
-Library-size constants are computed once after the normalization setting is
-applied, and each gene’s digamma and trigamma values are computed once. Each
-worker also reuses its fitting workspace across bins and genes. These changes
+Library-size constants are computed once, and each gene’s digamma and
+trigamma values are computed once. Each worker also reuses its fitting workspace across bins and genes. These changes
 avoid repeated calculations and allocations without changing the fitting
 algorithm or its convergence tolerance.
 
@@ -173,7 +171,6 @@ matrix using `numpy.load(path, mmap_mode="r", allow_pickle=False)`.
     -vmin, --variance_min               Minimal value of variance in log transcription quotient (default: 0.001)
     -vmax, --variance_max               Maximal value of variance in log transcription quotient (default: 50)
     -nbin, --number_of_variance_bins    Number of bins for the variance in log transcription quotient  (default: 160)
-    -no_norm, --no_cell_size_normalization  Option to skip cell size normalization (default: false, choice: false,0,true,1)
 ```
 
 ## Installation

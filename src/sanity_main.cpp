@@ -42,7 +42,7 @@ enum ParseResult
 
 
 /***Function declarations ****/
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, VarianceMethod &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, VarianceMethod &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode);
 static void show_usage(void);
 
 // Function to print a timestamped message to stderr
@@ -75,14 +75,13 @@ int main(int argc, char **argv)
     double variance_min = 0.001; // v_min, the smallest candidate gene variance (SI Section S1.1.4).
     double variance_max = 50.0; // v_max, the largest candidate gene variance.
     int num_bins = 160; // B, the number of grid points of the gene variance between v_min and v_max.
-    bool no_norm(false);
     VarianceMethod variance_method = VarianceMethod::MAP; // How to estimate v_g (see gene_fit.hpp).
     bool gzip_output = false;
     bool npy_output = false;
     bool bonsai_output_mode = false;
     std::string out_suffix = "";
 
-    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, num_threads, print_extended_output, variance_min, variance_max, num_bins, no_norm, variance_method, gzip_output, npy_output, bonsai_output_mode);
+    ParseResult parse_res = parse_argv(argc, argv, in_file, gene_name_file, cell_name_file, in_file_extension, out_folder, num_threads, print_extended_output, variance_min, variance_max, num_bins, variance_method, gzip_output, npy_output, bonsai_output_mode);
     if (parse_res == HELP_REQUESTED)
     {
         show_usage();
@@ -147,27 +146,7 @@ int main(int argc, char **argv)
     }
     logging_debug(genes_message);
 
-    // Remove the total UMI correction if no cell size normalization option is true
-    if (no_norm)
-    {
-        logging_debug("No cell size normalization will be performed");
-
-        // get mean count per cell
-        double mean_cell_total = 0;
-        for (int c = 0; c < num_cells; ++c)
-        {
-            mean_cell_total += cell_totals_c[c];
-        }
-        mean_cell_total /= num_cells;
-
-        // Now replace every N_c by the mean cell total
-        for (int c = 0; c < num_cells; ++c)
-        {
-            cell_totals_c[c] = mean_cell_total;
-        }
-    }
-
-    // Cache library constants after optional normalisation, preserving the sum order.
+    // Cache library constants, preserving the sum order.
     std::vector<double> log_cell_totals_c(num_cells); // log(N_c).
     double sum_cell_totals = 0; // sum_c N_c, the total counts of the dataset.
     for (int c = 0; c < num_cells; ++c) {
@@ -496,7 +475,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, bool &no_norm, VarianceMethod &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
+ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string &gene_name_file, std::string &cell_name_file, std::string &in_file_extension, std::string &out_folder, int &num_threads, bool &print_extended_output, double &variance_min, double &variance_max, int &num_bins, VarianceMethod &variance_method, bool &gzip_output, bool &npy_output, bool &bonsai_output_mode)
 {
 
     // Running with no arguments at all is a usage error, not a help request: main prints the usage
@@ -530,7 +509,6 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     }
 
     std::string extended_output("false");
-    std::string no_norm_str("false");
     std::string variance_method_str("MAP");
     std::string to_find[][2] = {{"-f", "--file"},
                              {"-d", "--destination"},
@@ -541,7 +519,6 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                              {"-nbin", "--number_of_variance_bins"},
                              {"-mtx_genes", "--mtx_gene_name_file"},
                              {"-mtx_cells", "--mtx_cell_name_file"},
-                             {"-no_norm", "--no_cell_size_normalization"},
                              {"-v_m", "--v_method"},
                              {"-gz", "--gzip_output"},
                              {"-npy", "--npy_output"},
@@ -558,8 +535,8 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
         {
             // The two development-only flags also keep their original spellings working.
             const bool legacy_spelling =
-                (t == 11 && (arg == "--gz" || arg == "--gzip-output")) ||
-                (t == 12 && (arg == "--npy" || arg == "--npy-output"));
+                (t == 10 && (arg == "--gz" || arg == "--gzip-output")) ||
+                (t == 11 && (arg == "--npy" || arg == "--npy-output"));
             if (arg == to_find[t][0] || arg == to_find[t][1] || legacy_spelling)
                 return t;
         }
@@ -567,7 +544,7 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
     };
     // Format flags and Bonsai output mode take no argument; other known options take
     // exactly one. -h/--help and -v/--version are handled earlier and never reach here.
-    auto takes_no_argument = [](int option_index) { return option_index == 11 || option_index == 12 || option_index == 13; };
+    auto takes_no_argument = [](int option_index) { return option_index == 10 || option_index == 11 || option_index == 12; };
 
     int j;
     int idx;
@@ -587,17 +564,17 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 //   d_delta.npy holds standard deviations, not variances.
                 //   -gz output cannot be read back by Sanity_distance or Sanity_gene_correlation,
                 //   which open delta.txt with a plain fopen and have no zlib path.
-                if (j == 11)
+                if (j == 10)
                 {
                     gzip_output = true;
                     continue; // no argument expected for -gz
                 }
-                if (j == 12)
+                if (j == 11)
                 {
                     npy_output = true;
                     continue; // no argument expected for -npy
                 }
-                if (j == 13)
+                if (j == 12)
                 {
                     bonsai_output_mode = true;
                     continue;
@@ -627,8 +604,6 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
                 if (j == 8)
                     cell_name_file = argv[idx + 1];
                 if (j == 9)
-                    no_norm_str = argv[idx + 1];
-                if (j == 10)
                     variance_method_str = argv[idx + 1];
                 // add '/' to out_folder if not already. `-d ""` gives an empty string, on which
                 // back() would be undefined behaviour, so treat it as the current directory.
@@ -678,9 +653,6 @@ ParseResult parse_argv(int argc, char **argv, std::string &in_file, std::string 
 
     if (extended_output == "true" || extended_output == "1")
         print_extended_output = true;
-
-    if (no_norm_str == "true" || no_norm_str == "1")
-        no_norm = true;
 
     if(variance_method_str == "MLE" || variance_method_str == "mle" || variance_method_str == "MaxLikelihood" || variance_method_str == "maxlikelihood" || variance_method_str == "max_likelihood"){
         variance_method = VarianceMethod::MLE;
@@ -778,6 +750,5 @@ static void show_usage(void)
               << "\t-vmin,--variance_min\tMinimal value of variance in log transcription quotient (default: 0.001)\n"
               << "\t-vmax,--variance_max\tMaximal value of variance in log transcription quotient (default: 50)\n"
               << "\t-nbin,--number_of_variance_bins\tNumber of bins for the variance in log transcription quotient  (default: 160)\n"
-              << "\t-no_norm,--no_cell_size_normalization\tOption to skip cell size normalization (default: false, choice: false,0,true,1)\n"
               << "\t-v_m,--v_method\t\tOption to specify the method for variance estimation (default: MAP, choice: MAP, EAP, MLE, MARG)\n";
 }

@@ -62,10 +62,10 @@ python3 compare_inference.py --reference /path/to/previous/bin/Sanity
 
 An optional `--candidate` selects a different candidate executable. This checks
 all four variance methods on TSV and fractional MTX inputs, a broad count range,
-empty genes, a custom variance grid and disabled cell-size normalisation.
+empty genes and a custom variance grid.
 Extended text, float64 arrays, Bonsai arrays and identifier order must match
 exactly. Command metadata is excluded because the executable paths differ.
 Inputs and outputs are generated in a temporary directory and removed.
 
 The inference comparison also covers cached fitting constants, including
-disabled cell-size normalization and custom variance grids.
+custom variance grids.

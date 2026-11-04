@@ -50,7 +50,7 @@ def main():
         cells.write_text("".join(f"cell_{c}\n" for c in range(17)))
         for source in [matrix, sparse]:
             for method in ["MAP", "MLE", "EAP", "MARG"]:
-                for configuration in [[], ["-no_norm", "true", "-nbin", "19", "-vmin", "0.01", "-vmax", "20"]]:
+                for configuration in [[], ["-nbin", "19", "-vmin", "0.01", "-vmax", "20"]]:
                     formats = [[], ["-npy"]]
                     if method == "MAP":
                         formats += [["--bonsai-output-mode"]]
