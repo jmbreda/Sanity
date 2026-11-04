@@ -74,7 +74,7 @@ python3 compare.py
 
 ## Source layout
 
-The top level of `src` holds the Sanity-specific code: the three programs (`sanity_main.cpp`, `sanity_distance.cpp`, `sanity_gene_correlation.cpp`), the model fitting (`fit_frac`) and `Version.h`.
+The top level of `src` holds the Sanity-specific code: the three programs (`sanity_main.cpp`, `sanity_distance.cpp`, `sanity_gene_correlation.cpp`), the per-gene fit (`gene_fit`), the solver for the cell fractions at one gene variance (`fit_frac`) and `Version.h`.
 Generic helpers live in `src/helpers`:
 
 - `helpers/io`: readers and writers for the count matrices (TSV and MTX, plain or gzip), the dense row reader, the output formatting and writer, and the NPY writer.

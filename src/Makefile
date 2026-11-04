@@ -32,7 +32,7 @@ BINDIR := ../bin
 IO := helpers/io
 MATH := helpers/math
 
-SANITY_OBJS := sanity_main.o fit_frac.o \
+SANITY_OBJS := sanity_main.o gene_fit.o fit_frac.o \
     read_input_files.o dense_row_reader.o npy_writer.o FukushimaLambertW.o digamma_trigamma.o
 
 Sanity: $(SANITY_OBJS) | $(BINDIR)
@@ -41,8 +41,11 @@ Sanity: $(SANITY_OBJS) | $(BINDIR)
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-sanity_main.o: sanity_main.cpp fit_frac.hpp Version.h $(IO)/format_output.hpp $(IO)/read_input_files.hpp $(IO)/dense_row_reader.hpp $(IO)/writer.hpp $(IO)/npy_writer.hpp $(MATH)/digamma_trigamma.hpp
+sanity_main.o: sanity_main.cpp gene_fit.hpp Version.h $(IO)/format_output.hpp $(IO)/read_input_files.hpp $(IO)/dense_row_reader.hpp $(IO)/writer.hpp $(IO)/npy_writer.hpp
 	$(CC) $(CFLAGS) -c sanity_main.cpp
+
+gene_fit.o: gene_fit.cpp gene_fit.hpp fit_frac.hpp $(MATH)/digamma_trigamma.hpp
+	$(CC) $(CFLAGS) -c gene_fit.cpp
 
 fit_frac.o: fit_frac.cpp fit_frac.hpp $(MATH)/FukushimaLambertW.h
 	$(CC) $(CFLAGS) -c fit_frac.cpp
